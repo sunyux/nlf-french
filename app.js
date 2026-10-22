@@ -595,6 +595,7 @@
           else this.flush();
         });
         window.addEventListener('pagehide', () => this.flush());
+        window.addEventListener('online', () => { if (this.linked()) this.pull(); });
       } catch (e) { this.status = 'error'; }
     },
     async signIn() {
@@ -635,7 +636,7 @@
     },
     // download the cloud copy, merge it into this device, then upload the merged result
     async pull() {
-      if (!this.linked() || this.busy) return;
+      if (!this.linked() || this.busy || navigator.onLine === false) return;
       this.busy = true; this.status = 'syncing'; refreshCloudUI();
       try {
         const snap = await this.doc().get();
@@ -653,7 +654,7 @@
       this.busy = false; refreshCloudUI();
     },
     async push() {
-      if (!this.linked()) return;
+      if (!this.linked() || navigator.onLine === false) { this.dirty = this.dirty || this.linked(); return; }
       try {
         await this.doc().set({ data: this.local(), updated: firebase.firestore.FieldValue.serverTimestamp(), email: this.user.email || '' });
         store.set('lastSync', new Date().toISOString(), true); this.status = 'ok';
@@ -1602,6 +1603,7 @@
     main.innerHTML = `
       <p class="kicker" lang="fr">Mon carnet</p>
       <h1 style="font-size:44px">${bi('我的打卡与邮册', 'My streak & stamp album')}</h1>
+      ${weekHTML()}
       <div class="review-stats">
         <div><b>${s}</b><span>连续天数</span></div>
         <div><b>${XP.best()}</b><span>最长连续</span></div>
@@ -1874,6 +1876,14 @@
     const box = $('#settings');
     const vs = TTS.voices;
     box.innerHTML = `
+      <p class="set-h">${bi('阅读舒适', 'Reading comfort')}</p>
+      <label><span class="lab">${bi('文字大小', 'Text size')} · <b id="rs-v">${settings.rs || 100}%</b></span>
+        <input type="range" id="s-rs" min="100" max="160" step="10" value="${settings.rs || 100}"></label>
+      <label class="chk"><input type="checkbox" id="s-rsp" ${settings.rsp ? 'checked' : ''}> ${bi('宽松排版（更大的字距和行距）', 'Roomy spacing (wider letters, words and lines)')}</label>
+      <label><span class="lab">${bi('背景颜色', 'Background colour')}</span>
+        <select id="s-rbg">${[['default', 'Puppy cream (default)'], ['cream', 'Soft cream'], ['blue', 'Pale blue'], ['grey', 'Soft grey']].map(([k, t]) => `<option value="${k}" ${(settings.rbg || 'default') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="chk"><input type="checkbox" id="s-auto" ${store.get('vauto', false) ? 'checked' : ''}> ${bi('每题自动朗读', 'Say each word out loud automatically')}</label>
+      <p class="set-h">${bi('声音', 'Sound')}</p>
       <label><span class="lab">朗读语速 · <b id="rate-v">${settings.rate.toFixed(2)}</b></span>
         <input type="range" id="s-rate" min="0.5" max="1.2" step="0.05" value="${settings.rate}"></label>
       <label><span class="lab">朗读音量 · <b id="vol-v">${Math.round(settings.volume * 100)}%</b></span>
@@ -1887,6 +1897,10 @@
       <label class="chk"><input type="checkbox" id="s-len" ${settings.lenient ? 'checked' : ''}> 重音写错也算对</label>
       <button class="btn ghost small" data-say="Bonjour ! Je m'appelle Alice. Ça va bien ?">试听</button>
       <p class="kbd" style="margin:12px 0 0">macOS 可在 系统设置 › 辅助功能 › 朗读内容 › 系统声音 下载更自然的法语声音（如 Amélie 高音质）。</p>`;
+    $('#s-rs').oninput = e => { settings.rs = +e.target.value; $('#rs-v').textContent = settings.rs + '%'; saveSettings(); applyReading(); };
+    $('#s-rsp').onchange = e => { settings.rsp = e.target.checked; saveSettings(); applyReading(); };
+    $('#s-rbg').onchange = e => { settings.rbg = e.target.value; saveSettings(); applyReading(); };
+    $('#s-auto').onchange = e => store.set('vauto', e.target.checked);
     $('#s-rate').oninput = e => { settings.rate = +e.target.value; $('#rate-v').textContent = settings.rate.toFixed(2); saveSettings(); };
     $('#s-vol').oninput = e => { settings.volume = +e.target.value; window.NH_VOLUME = settings.volume; $('#vol-v').textContent = Math.round(settings.volume * 100) + '%'; saveSettings(); };
     $('#s-vol').onchange = () => TTS.say('Bonjour !');
@@ -1986,6 +2000,15 @@
   window.NH_LANG = () => L();
   function applyDys() { document.documentElement.classList.toggle('dys', settings.dys !== false); }
   applyDys();
+  // reading comfort: text size, easy-reading spacing, softer background (per device)
+  const RD_BG = ['default', 'cream', 'blue', 'grey'];
+  function applyReading() {
+    const h = document.documentElement;
+    h.style.setProperty('--rs', String((settings.rs || 100) / 100));
+    h.classList.toggle('rd-space', !!settings.rsp);
+    RD_BG.forEach(b => h.classList.toggle('rd-' + b, (settings.rbg || 'default') === b));
+  }
+  applyReading();
   function setFocus(v) {
     settings.focus = !!v; saveSettings();
     const c = $('#s-focus'); if (c) c.checked = settings.focus;
@@ -2002,12 +2025,13 @@
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
     const crumbs = $('#crumbs');
     // focus mode only kicks in on practice pages
-    if (window.FOCUS) FOCUS.page((BOOKS.some(b => b.id === parts[0]) && parts.length >= 2) || (parts[0] === 'review' && !!parts[1]) || (parts[0] === 'sons' && parts.length >= 2));
+    if (window.FOCUS) FOCUS.page((BOOKS.some(b => b.id === parts[0]) && parts.length >= 2) || (parts[0] === 'review' && !!parts[1]) || (parts[0] === 'sons' && parts.length >= 2) || parts[0] === 'today');
     // curtain colour of the reading plate, by section
     document.body.dataset.drape = { journal: 'green', sons: 'blue', review: 'red', tools: 'cream', mine: 'green', verbes: 'blue', me: 'red' }[parts[0]] || 'yellow';
     window.scrollTo(0, 0);
     if (!parts.length) { crumbs.innerHTML = ''; return viewHome(); }
     if (parts[0] === 'journal') { crumbs.innerHTML = `<span>${bi('法语日记', 'Journal')}</span>`; return viewJournal(parts[1]); }
+    if (parts[0] === 'today') { crumbs.innerHTML = `<span>${bi('今日一轮', 'Today\'s round')}</span>`; return viewToday(); }
     if (parts[0] === 'mine') { crumbs.innerHTML = `<span>${bi('生词本', 'My words')}</span>`; return viewMine(parts[1]); }
     if (parts[0] === 'tools') {
       crumbs.innerHTML = `<span>${bi('工具', 'Tools')}</span>`;
@@ -2069,6 +2093,12 @@
       main.innerHTML = '<div class="toolbar"><a class="btn ghost small" href="#/review">‹ 返回错题本</a></div><div id="drill"></div>';
       return reviewLearn($('#drill'), sub === 'learn' ? due : active, sub === 'learn' ? '#/review/go' : '#/review/early');
     }
+    if (sub === 'spell') {
+      main.innerHTML = `<div class="toolbar"><a class="btn ghost small" href="#/review">‹ ${bi('返回错题本', 'Back to the mistake book')}</a></div><div id="drill"></div>`;
+      const mine = active.filter(e => e.kind === 'word' && e.pos !== '变位' && e.fr).map(e => enFill({ ...e }));
+      const pool = BOOKS.filter(b => b.flat).flatMap(b => testItems(b, b.units.flatMap(u => u.lecons)));
+      return testIntro($('#drill'), { id: 'mine:spell', kind: 'spell', title: 'My mistakes', items: mine, pool, mine: true, back: '#/review' });
+    }
     if (sub === 'go' || sub === 'listen' || sub === 'early' || sub === 'early-listen') {
       main.innerHTML = '<div class="toolbar"><a class="btn ghost small" href="#/review">‹ 返回错题本</a></div><div id="drill"></div>';
       return reviewDrill($('#drill'), shuffle(sub.startsWith('early') ? active : due));
@@ -2088,6 +2118,7 @@
       <div class="toolbar">
         ${due.length ? `<a class="btn ghost" href="#/review/learn">${bi('先学一遍', 'Study first')}</a><a class="btn" href="#/review/go">开始今天的复习（${due.length}）</a>`
           : `<span class="btn ghost" aria-disabled="true">今天没有要复习的</span>`}
+        ${active.some(e => e.kind === 'word' && e.pos !== '变位') ? `<a class="btn ghost" href="#/review/spell">${bi('错词拼写选择', 'Spelling quiz on my mistakes')}</a>` : ''}
         ${active.length && !due.length ? `<a class="btn ghost" href="#/review/early-learn">${bi('先学一遍', 'Study first')}</a><a class="btn ghost" href="#/review/early">提前复习全部</a>` : ''}
         <span class="spacer"></span>
         <button class="btn ghost small" id="exp">导出备份</button>
@@ -2334,6 +2365,60 @@
     draw();
   }
 
+  /* ---------- today's round: one button that picks the next small thing to do ---------- */
+  const TODAY_NEW = 5, TODAY_REVIEW = 8;
+  function todayPlan() {
+    const due = SRS.due();
+    if (due.length) return { kind: 'review', items: shuffle(due).slice(0, TODAY_REVIEW), total: due.length };
+    let started = null, fresh = null;
+    for (const b of BOOKS.filter(b => b.flat)) for (const u of b.units) for (const l of u.lecons) {
+      const m = MASTER.get(b.id, l.n), rest = l.vocab.filter(v => !m.w[v.fr] && !inReview(b.id, l.n, v.fr));   // words already in the mistake book come back as reviews
+      if (!rest.length) continue;
+      const plan = { kind: 'new', book: b, lecon: l, rest };
+      if (rest.length < l.vocab.length) started = started || plan; else fresh = fresh || plan;
+    }
+    return started || fresh;
+  }
+  function todayLabel(plan) {
+    if (!plan) return 'Everything mastered';
+    if (plan.kind === 'review') return `${plan.items.length} word${plan.items.length === 1 ? '' : 's'} to review · about ${Math.max(2, Math.round(plan.items.length * 0.4))} min`;
+    const n = Math.min(TODAY_NEW, plan.rest.length);
+    return `${n} new word${n === 1 ? '' : 's'} · ${leconName(plan.lecon.n)} · about 3 min`;
+  }
+  function viewToday() {
+    document.title = 'Today\'s round · Pawsitive French';
+    const plan = todayPlan();
+    main.innerHTML = `<div class="toolbar"><a class="btn ghost small" href="#/">‹ Home</a></div><div id="drill"></div>`;
+    const box = $('#drill');
+    if (!plan) {
+      box.innerHTML = `<div class="drill summary">${pupImg('complete', 'round-pup')}<h2>Every word is mastered!</h2>
+        <p class="hint-text">Amazing. Pick any book to practise the quizzes again.</p><a class="btn" href="#/">Home</a></div>`;
+      return;
+    }
+    if (plan.kind === 'review') return reviewDrill(box, plan.items);
+    const items = plan.rest.slice(0, TODAY_NEW).map(v => ({ ...v, kind: 'word', book: plan.book.id, n: plan.lecon.n }));
+    const quiz = () => testRun(box, {
+      id: `today:${plan.book.id}:${plan.lecon.n}`, kind: 'write', today: true, title: `${leconName(plan.lecon.n)} · today`,
+      items, pool: items, back: '#/', more: { label: 'Another round', run: viewToday },
+    }, { order: shuffle(items).map(wkey), i: 0, ok: [], bad: [], date: dayStr() });
+    reviewLearn(box, items, null, { onNext: quiz, nextLabel: 'Now write them from memory', title: 'today' });
+  }
+  // a calm look at the week: new words mastered, days practised
+  function weekStats() {
+    const since = addDays(-6); let words = 0, days = 0;
+    Object.keys(localStorage).filter(k => k.startsWith('nh:master:')).forEach(k => {
+      try { Object.values((JSON.parse(localStorage.getItem(k)) || {}).w || {}).forEach(d => { if (d >= since) words++; }); } catch { }
+    });
+    const log = XP.log();
+    for (let i = 0; i < 7; i++) if ((log[addDays(-i)] || {}).xp) days++;
+    return { words, days };
+  }
+  function weekHTML() {
+    const { words, days } = weekStats();
+    const msg = !words && !days ? 'A fresh week. One small round is a great start.'
+      : `This week you mastered <b>${words}</b> new word${words === 1 ? '' : 's'} and practised on <b>${days}</b> of 7 days.`;
+    return `<div class="week-line">${pupImg('star', 'week-pup')}<p>${msg}</p></div>`;
+  }
   function viewHome() {
     document.title = 'Pawsitive French · NLF vocabulary';
     const books = BOOKS.filter(b => b.flat);
@@ -2346,11 +2431,12 @@
             <p class="kicker" lang="fr">Bonjour, petit chien savant</p>
             <h1>Ready to fetch some French words?</h1>
             <p>${words.toLocaleString('en')} words from the NLF vocabulary lists, each with an example sentence. Study a unit, then write it from memory. Tap any French to hear it.</p>
-            <div class="toolbar"><a class="btn" href="#/${books[0].id}">Start with ${esc(books[0].level)}</a><a class="btn ghost" href="#/review">Mistake book</a><a class="btn ghost" href="#/journal">Write today's journal</a></div>
+            <div class="toolbar today-bar"><a class="btn big today-btn" href="#/today"><span>Today's round</span><small>${esc(todayLabel(todayPlan()))}</small></a></div>
+            <div class="toolbar"><a class="btn ghost" href="#/${books[0].id}">Start with ${esc(books[0].level)}</a><a class="btn ghost" href="#/review">Mistake book</a><a class="btn ghost" href="#/journal">Write today's journal</a></div>
           </div>
         </div>
         <div class="shelf">${books.map(b => `<div class="shelf-item">${coverHTML(b)}<p class="shelf-cap"><b>${esc(b.title)}</b><span>${b.units.length} units · ${b.units.reduce((m, u) => m + u.lecons.reduce((k, l) => k + l.vocab.length, 0), 0).toLocaleString('en')} words</span></p></div>`).join('')}</div>
-        ${backupNag()}${reviewBanner()}
+        ${weekHTML()}${backupNag()}${reviewBanner()}
       </section>`;
   }
 
@@ -2583,13 +2669,25 @@
       <p class="hint-text">${info.sub} ${cfg.items.length.toLocaleString('en')} words.${saved ? `<br>You stopped at word <b>${saved.i + 1}</b> of ${saved.order.length} (${right} of ${answered} right so far). Your place is saved.` : '<br>You can stop at any time and carry on later.'}</p>
       ${last ? `<p class="kbd">Last time: ${last.score}% · ${last.date}</p>` : ''}
       ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-tricky" ${store.get('tricky', true) ? 'checked' : ''}> Tricky choices: wrong answers are similar words (same type, same unit, similar spelling)</label>` : ''}
+      <label class="kbd tricky-opt"><input type="checkbox" id="t-auto" ${store.get('vauto', false) ? 'checked' : ''}> Say each word out loud automatically</label>
       <div class="toolbar" style="justify-content:center">
         ${saved ? `<button class="btn" id="t-go">Resume</button><button class="btn ghost" id="t-new">Start over</button>` : `<button class="btn" id="t-go">Start</button>`}
+        ${cfg.items.length > QUICK_N ? `<button class="btn ghost" id="t-quick">Quick round · ${QUICK_N} words</button>` : ''}
       </div></div>`;
     const fresh = () => ({ order: shuffle(cfg.items).map(wkey), i: 0, ok: [], bad: [], date: dayStr() });
     const tk = $('#t-tricky', box); if (tk) tk.onchange = () => store.set('tricky', tk.checked);
     $('#t-go', box).onclick = () => testRun(box, cfg, saved || fresh());
     const n = $('#t-new', box); if (n) n.onclick = () => testRun(box, cfg, fresh());
+    const au = $('#t-auto', box); if (au) au.onchange = () => store.set('vauto', au.checked);
+    const q = $('#t-quick', box); if (q) q.onclick = () => quickRound(box, cfg, shuffle(cfg.items));
+  }
+  // a short round: QUICK_N words, a clear end, then "another round or stop"
+  const QUICK_N = 10;
+  function quickRound(box, cfg, left) {
+    const take = left.slice(0, QUICK_N), rest = left.slice(QUICK_N);
+    const qcfg = { ...cfg, id: cfg.id + ':quick', title: cfg.title + ' · quick round', items: take, quick: true,
+      more: rest.length ? { label: `Another ${Math.min(QUICK_N, rest.length)} words`, run: () => quickRound(box, cfg, rest) } : null };
+    testRun(box, qcfg, { order: shuffle(take).map(wkey), i: 0, ok: [], bad: [], date: dayStr() });
   }
   function testRun(box, cfg, st) {
     const map = new Map(cfg.items.map(v => [wkey(v), v]));
@@ -2722,7 +2820,7 @@
         if (answered) return; answered = true;
         const good = opts[k] === right, it = note(v);
         $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
-        if (good) XP.gain(1, 'Spelling quiz'); else { SRS.miss(it, opts[k]); MASTER.word(v.book, v.n, v.fr, false); }
+        if (good) { XP.gain(1, 'Spelling quiz'); if (cfg.mine && inReview(v.book, v.n, v.fr)) SRS.hit(it); } else { SRS.miss(it, opts[k]); MASTER.word(v.book, v.n, v.fr, false); }
         record(v, good);
         $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : 'Not quite. It is spelled'}</span>
           <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</div>
@@ -2785,14 +2883,17 @@
       const missed = st.bad.map(k => map.get(k)).filter(Boolean);
       box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">Bilan</p>
         <div class="score">${score}%</div>
+        ${cfg.quick || cfg.today ? `<p class="round-done">${pupImg('correct', 'round-pup')}<b>Round done!</b> That is a good stopping point. Take a breath, or keep going if you feel like it.</p>` : ''}
         <p>${st.ok.length} of ${total} right${bonus ? ` · +${bonus} points for finishing` : ''}.${missed.length ? ' The missed words are now in your mistake book.' : ' Every word right. Great work!'}</p>
         ${missed.length ? `<ul class="missed">${missed.map(v => `<li><span lang="fr">${playBtn(forms(v.fr).say)} ${esc(v.fr)}</span><span class="w-zh">${esc(meaningOf(v))}</span></li>`).join('')}</ul>` : ''}
         <div class="drill-actions" style="justify-content:center">
           ${missed.length ? `<button class="btn" id="t-miss">Test the ${missed.length} missed</button>` : ''}
-          <button class="btn ${missed.length ? 'ghost' : ''}" id="t-again">Test again</button>
-          <a class="btn ghost" href="${cfg.back}">Back</a></div></div>`;
+          ${cfg.more ? `<button class="btn ${missed.length ? 'ghost' : ''}" id="t-more">${esc(cfg.more.label)}</button>` : ''}
+          <button class="btn ghost" id="t-again">Test again</button>
+          <a class="btn ghost" href="${cfg.back}">${cfg.quick || cfg.today ? 'I am done' : 'Back'}</a></div></div>`;
+      const mo = $('#t-more', box); if (mo) mo.onclick = cfg.more.run;
       const m = $('#t-miss', box);
-      if (m) m.onclick = () => testIntro(box, { ...cfg, id: cfg.id + ':missed', title: cfg.title + ' · missed words', items: missed });
+      if (m) m.onclick = () => testIntro(box, { ...cfg, id: cfg.id + ':missed', title: cfg.title + ' · missed words', items: missed, quick: false, more: null, today: false });
       $('#t-again', box).onclick = () => testRun(box, cfg, { order: shuffle(cfg.items).map(wkey), i: 0, ok: [], bad: [], date: dayStr() });
     }
     draw();
@@ -3485,6 +3586,10 @@
   renderLang();
   const qsb = $('#qs-btn'); if (qsb) qsb.onclick = () => openLookup();
   CLOUD.init();
+  // offline support: cache the site so it also opens without signal (https / localhost only)
+  if ('serviceWorker' in navigator && /^(https:|http:\/\/localhost)/.test(location.href)) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));
+  }
   ACCENTS.init();
   if (window.DUST) DUST.set(settings.dust !== false && settings.look !== 'mono');
   renderStatus();
