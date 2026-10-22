@@ -556,3 +556,4 @@ main { max-width: 1080px; }
   .top .settings-btn { width: 36px; height: 36px; }
   .top .btn.small { padding: 4px 11px; font-size: 14px; box-shadow: 0 3px 0 var(--line); }
 }
+.spell-opts .opt-t { font-size: 21px; font-weight: 700; }

@@ -2025,7 +2025,7 @@
       crumbs.innerHTML = `<a href="#/${book.id}">${esc(book.title)}</a>`;
       return viewBook(book);
     }
-    if (parts[1] === 'test') { crumbs.innerHTML = `<a href="#/${book.id}">${esc(book.title)}</a><span class="sep">›</span><span>${parts[2] === 'choose' ? 'Meaning quiz' : 'Full test'}</span>`; return viewBookTest(book, parts[2] === 'choose' ? 'choose' : 'write'); }
+    if (parts[1] === 'test') { crumbs.innerHTML = `<a href="#/${book.id}">${esc(book.title)}</a><span class="sep">›</span><span>${TEST_KINDS[parts[2]] ? TEST_KINDS[parts[2]].title : 'Full test'}</span>`; return viewBookTest(book, TEST_KINDS[parts[2]] ? parts[2] : 'write'); }
     const n = +parts[1].replace(/\D/g, '');
     const found = findLecon(book, n);
     if (!found) { location.hash = '#/' + book.id; return; }
@@ -2364,7 +2364,7 @@
     const PARTS = ['vocab', 'phrases', 'full', 'recite'];
     main.innerHTML = `
       <div class="book-head">${coverHTML(book, 'div')}<div><p class="kicker" lang="fr">${esc(book.fr)}</p><h1>${esc(book.title)}</h1><p class="book-sub">${book.units.length} units · ${book.units.reduce((m, u) => m + u.lecons.reduce((k, l) => k + l.vocab.length, 0), 0).toLocaleString('en')} words, each with an example sentence</p>
-        <div class="toolbar"><a class="btn" href="#/${book.id}/test/write">${TST.get(`${book.id}:all:write`) ? 'Resume the full test' : `Full test · all ${book.level}`}</a><a class="btn ghost" href="#/${book.id}/test/choose">${TST.get(`${book.id}:all:choose`) ? 'Resume the meaning quiz' : 'Meaning quiz · all ' + book.level}</a></div></div></div>
+        <div class="toolbar">${[['write', `Full test · all ${book.level}`, 'Resume the full test'], ['choose', `Meaning quiz · all ${book.level}`, 'Resume the meaning quiz'], ['spell', `Spelling quiz · all ${book.level}`, 'Resume the spelling quiz']].map(([k, t, r], j) => `<a class="btn ${j ? 'ghost' : ''}" href="#/${book.id}/test/${k}">${TST.get(`${book.id}:all:${k}`) ? r : t}</a>`).join('')}</div></div></div>
       ${reviewBanner()}
       <section class="unit"><div class="lecons">${book.units.flatMap(u => u.lecons).map(l => `<a class="lecon-card" href="#/${book.id}/${l.n}">${lessonArt(l.n)}
               <div class="n" lang="fr">Unité ${l.n % 100}</div>
@@ -2482,7 +2482,7 @@
     if (mode === 'listen') { mode = 'write'; store.set('vauto', true); }
     const { lecon, pane } = ctx;
     store.set('vmode', mode);
-    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['test', bi('首测', 'First test')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['choose', bi('选意思', 'Meaning quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
+    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['test', bi('首测', 'First test')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['choose', bi('选意思', 'Meaning quiz')], ['spell', bi('选拼写', 'Spelling quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
     if (mode === 'list') {
       const groups = [];
       orderedVocab(ctx.book.id, lecon).forEach(v => { let g = groups.find(x => x.g === v.g); if (!g) groups.push(g = { g: v.g, items: [] }); g.items.push(v); });
@@ -2518,9 +2518,9 @@
         const prevC = cleanup; cleanup = () => { stopper && stopper(); prevC && prevC(); };
       };
     } else {
-      if (mode === 'full' || mode === 'choose') {
+      if (mode === 'full' || mode === 'choose' || mode === 'spell') {
         pane.innerHTML = head + '<div id="drill"></div>'; bindModes(pane, m => paneVocab(ctx, m));
-        const b = ctx.book, kind = mode === 'full' ? 'write' : 'choose';
+        const b = ctx.book, kind = mode === 'full' ? 'write' : mode === 'spell' ? 'spell' : 'choose';
         return testIntro($('#drill', pane), { id: `${b.id}:${lecon.n}:${kind}`, kind, title: `Unité ${lecon.n % 100} · ${lecon.title}`, items: testItems(b, [lecon]), pool: testItems(b, b.units.flatMap(u => u.lecons)), back: `#/${b.id}/${lecon.n}/vocab` });
       }
       if (mode === 'conj') { pane.innerHTML = head + '<div id="drill"></div>'; bindModes(pane, m => paneVocab(ctx, m)); return conjPane(ctx, $('#drill', pane)); }
@@ -2559,6 +2559,7 @@
   const TEST_KINDS = {
     write: { fr: 'Test complet', title: 'Full test', sub: 'Write every word in French, in a random order.' },
     choose: { fr: 'Quiz de sens', title: 'Meaning quiz', sub: 'See a French word and pick its English meaning.' },
+    spell: { fr: "Quiz d'orthographe", title: 'Spelling quiz', sub: 'Hear a word and read its English meaning, then pick the correct spelling.' },
   };
   const wkey = v => `${v.book}|${v.n}|${v.fr}`;
   const testItems = (book, lecons) => lecons.flatMap(l => l.vocab.map(v => ({ ...v, book: book.id, n: l.n })));
@@ -2601,7 +2602,7 @@
       const it = { book: v.book, n: v.n, kind: 'word', fr: v.fr, zh: v.zh, en: v.en, pos: v.pos, tip: v.tip, tipEn: v.tipEn, ex: v.ex, g: v.g };
       return it;
     };
-    const draw = () => (st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
+    const draw = () => (st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
     const record = (v, good) => { (good ? st.ok : st.bad).push(wkey(v)); st.i++; save(); };
     const after = v => `${tipBox(wordTip(v.n, v))}${exBox(v)}`;
 
@@ -2664,6 +2665,81 @@
       }
       return shuffle([meaningOf(v), ...pick]);
     }
+
+    // plausible misspellings of a French word: accents, doubled letters, sound-alike spellings, swapped letters
+    const ACC = { 'é': 'èe', 'è': 'éeê', 'ê': 'eèé', 'à': 'aâ', 'â': 'aà', 'ô': 'o', 'î': 'i', 'ï': 'i', 'û': 'u', 'ù': 'uû', 'ç': 'cs', 'ë': 'e', 'œ': 'oe' };
+    const SOUND = [['ph', 'f'], ['f', 'ph'], ['qu', 'k'], ['ai', 'ei'], ['ei', 'ai'], ['eau', 'o'], ['au', 'o'], ['ou', 'u'], ['an', 'en'], ['en', 'an'], ['tion', 'sion'], ['ss', 's'], ['s', 'ss'], ['gn', 'ni'], ['oi', 'oa'], ['ch', 'sh'], ['y', 'i'], ['i', 'y'], ['ll', 'l'], ['tt', 't'], ['nn', 'n'], ['rr', 'r'], ['mm', 'm'], ['pp', 'p'], ['ff', 'f'], ['c', 'k'], ['ç', 'c']];
+    const DOUBLE = 'bcdfglmnprst';
+    function misspellings(text) {
+      const rx = /[\p{L}]+/gu; let best = null, m;
+      while ((m = rx.exec(text))) if (!best || m[0].length > best[0].length) best = { 0: m[0], index: m.index };
+      if (!best) return [];
+      const w = best[0], lw = w.toLowerCase(), out = [];
+      const add = (t, type) => { if (t && t !== lw) out.push([t, type]); };
+      for (let i = 0; i < lw.length; i++) {
+        const c = lw[i];
+        for (const r of ACC[c] || '') add(lw.slice(0, i) + r + lw.slice(i + 1), 'acc');
+        if (c === 'e') { add(lw.slice(0, i) + 'é' + lw.slice(i + 1), 'acc'); add(lw.slice(0, i) + 'è' + lw.slice(i + 1), 'acc'); }
+        if (i > 0 && i < lw.length - 1 && lw[i] !== lw[i + 1]) add(lw.slice(0, i) + lw[i + 1] + lw[i] + lw.slice(i + 2), 'swap');
+        if (DOUBLE.includes(c) && lw[i + 1] === c) add(lw.slice(0, i) + lw.slice(i + 1), 'dbl');
+        else if (DOUBLE.includes(c) && i > 0 && i < lw.length - 1 && 'aeiouéèêàâîôû'.includes(lw[i - 1])) add(lw.slice(0, i + 1) + c + lw.slice(i + 1), 'dbl');
+      }
+      for (const [a, b] of SOUND) { const k = lw.indexOf(a); if (k >= 0) add(lw.slice(0, k) + b + lw.slice(k + a.length), 'snd'); }
+      if (/[stdxe]$/.test(lw) && lw.length > 3) add(lw.slice(0, -1), 'end');
+      else if (lw.length > 3) add(lw + 'e', 'end');
+      if (lw.length > 4) { const k = 1 + Math.floor(Math.random() * (lw.length - 2)); add(lw.slice(0, k) + lw.slice(k + 1), 'del'); }
+      const rebuild = t => (w[0] !== w[0].toLowerCase() ? t[0].toUpperCase() + t.slice(1) : t);
+      return out.map(([t, type]) => [text.slice(0, best.index) + rebuild(t) + text.slice(best.index + w.length), type]);
+    }
+    let knownSpellings = null;
+    const known = () => knownSpellings || (knownSpellings = new Set(cfg.pool.flatMap(x => forms(x.fr).accept.map(norm))));
+    function spellOptions(v) {
+      const acc = forms(v.fr).accept, right = acc.find(x => !/[(/]/.test(x)) || acc[0];
+      const cands = shuffle(misspellings(right)).filter(([t]) => norm(t) !== norm(right) && !known().has(norm(t)));
+      const pick = [], types = new Set(), seen = new Set([norm(right)]);
+      for (const pass of [0, 1, 2]) for (const [t, type] of cands) {
+        if (pick.length === 3) break;
+        if (seen.has(norm(t)) || (pass === 0 && types.has(type)) || (pass < 2 && (type === 'swap' || type === 'del'))) continue;   // keep the realistic slips (accents, double letters, sound-alikes) first
+        seen.add(norm(t)); types.add(type); pick.push(t);
+      }
+      for (const extra of ['e', 's', 'x', 'a']) { if (pick.length >= 3) break; const t = right + extra; if (!seen.has(norm(t))) { seen.add(norm(t)); pick.push(t); } }
+      return { right, opts: shuffle([right, ...pick]) };
+    }
+    function drawSpell(v) {
+      const { right, opts } = spellOptions(v);
+      let answered = false;
+      box.innerHTML = `<div class="drill">${head()}
+        <div class="prompt choose-prompt${gx(v.pos)}"><div class="pmean">${MEAN(v)}</div>
+          <div class="ppos">${playBtn(forms(v.fr).say)} <span class="pos ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}">${esc(v.pos)}</span> <span class="kbd">tap the speaker to hear it</span></div></div>
+        <div class="opts spell-opts">${opts.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t" lang="fr">${esc(o)}</span></button>`).join('')}</div>
+        <div class="drill-actions">${leave}<span class="spacer"></span><span class="kbd"><kbd>1</kbd>–<kbd>4</kbd> choose · <kbd>Enter</kbd> next</span></div>
+        <div id="fb"></div></div>`;
+      bindPause();
+      if (auto) setTimeout(() => TTS.say(forms(v.fr).say), 200);
+      const choose = k => {
+        if (answered) return; answered = true;
+        const good = opts[k] === right, it = note(v);
+        $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
+        if (good) XP.gain(1, 'Spelling quiz'); else { SRS.miss(it, opts[k]); MASTER.word(v.book, v.n, v.fr, false); }
+        record(v, good);
+        $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : 'Not quite. It is spelled'}</span>
+          <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</div>
+          ${after(v)}
+          <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
+        const nb = $('#t-next', box); nb.focus(); nb.onclick = draw;
+        TTS.say(forms(v.fr).say);
+        if (good) setTimeout(() => { if (box.isConnected && st.order[st.i - 1] === wkey(v) && $('#t-next', box) === nb) draw(); }, 1500);
+      };
+      $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
+      const keys = e => {
+        if (!box.isConnected) return document.removeEventListener('keydown', keys);
+        if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+        if (e.key >= '1' && e.key <= '4') { e.preventDefault(); choose(+e.key - 1); }
+        else if (e.key === 'Enter' && answered) { e.preventDefault(); document.removeEventListener('keydown', keys); draw(); }
+      };
+      document.addEventListener('keydown', keys);
+    }
+
     function drawChoose(v) {
       const opts = options(v), right = meaningOf(v);
       let answered = false;
