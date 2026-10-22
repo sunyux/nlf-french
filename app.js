@@ -794,7 +794,7 @@
       <svg viewBox="0 0 200 90" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" aria-hidden="true">
         <path d="M20 70 Q40 20 60 70 T100 70 T140 70 T180 70" /><path d="M20 80 Q50 50 80 80 T140 80 T200 80" stroke-width=".7"/>
         <path d="M150 20 q8 -8 16 0 q-8 10 -16 0z M170 34 q6 -6 12 0 q-6 8 -12 0z" stroke-width=".8"/>
-      </svg></${tag}>`;
+      </svg>${pupImg('listen', 'cover-pup')}</${tag}>`;
   }
 
   function viewSounds() {
@@ -1197,7 +1197,7 @@
     document.title = bi('生词本', 'My words') + ' · Pawsitive French';
     const words = MINE.all();
     main.innerHTML = `
-      <header class="lecon-head"><p class="kicker" lang="fr">Mon carnet</p><h1>${bi('生词本', 'My words')}</h1>
+      <header class="lecon-head"><p class="kicker" lang="fr">Mon carnet</p><h1 class="pup-title">${bi('生词本', 'My words')}${pupImg('star')}</h1>
         <div class="zh">${bi(`${words.length} 个词 · 在随手查里点 ☆ 收藏，或者在下面手动添加`, `${words.length} words · tap ☆ in Look up, or add one below`)}</div></header>
       <details class="mine-add" ${words.length ? '' : 'open'}><summary>${bi('＋ 手动添加一个词', '＋ Add a word yourself')}</summary>
         <div class="mine-form">
@@ -1445,7 +1445,7 @@
     const all = JR.all(), days = Object.keys(all).sort().reverse();
     const words = s => tokens(s || '').length;
     main.innerHTML = `
-      <p class="kicker" lang="fr">Mon journal</p><h1>${bi('法语日记', 'French journal')}</h1>
+      <p class="kicker" lang="fr">Mon journal</p><h1 class="pup-title">${bi('法语日记', 'French journal')}${pupImg('journal')}</h1>
       <div class="journal">
         <div class="j-page">
           <div class="j-date"><span lang="fr">${esc(d)}</span>${d !== today ? `<a href="#/journal" class="btn ghost small">${bi('回到今天', 'Today')}</a>` : ''}</div>
@@ -1504,7 +1504,7 @@
     };
     $('#j-back', main).onclick = async () => {
       if (!ta.value.trim()) return;
-      res.innerHTML = `<p class="kbd">${bi('翻译中…', 'Translating…')}</p>`;
+      res.innerHTML = `<p class="kbd pup-wait">${pupImg('spin', 'spin')}${bi('翻译中…', 'Translating…')}</p>`;
       try { const zh = await mymemory(ta.value, 'fr', L() === 'en' ? 'en' : 'zh-CN'); res.innerHTML = `<div class="feedback ok"><span class="lab">${bi('机器回译（看看意思是不是你想说的）', 'Machine back-translation (does it say what you meant?)')}</span><div class="j-backtext">${esc(zh)}</div></div>`; }
       catch { res.innerHTML = `<p class="notice">${bi('翻译服务连不上，稍后再试。', 'Translation service unavailable, try later.')}</p>`; }
     };
@@ -1564,7 +1564,7 @@
       const text = $in.value.trim().slice(0, 500);
       if (!text) return;
       if ($f.value === $t.value) { out.hidden = false; out.innerHTML = esc(text); return; }
-      out.hidden = false; out.innerHTML = `<span class="kbd">${bi('翻译中…', 'Translating…')}</span>`;
+      out.hidden = false; out.innerHTML = `<span class="kbd pup-wait">${pupImg('spin', 'spin')}${bi('翻译中…', 'Translating…')}</span>`;
       try {
         const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${$f.value}|${$t.value}`);
         const j = await r.json();
@@ -1950,12 +1950,14 @@
       <circle cx="36" cy="74" r="5" fill="#f6b3a5" opacity=".55"/><circle cx="84" cy="74" r="5" fill="#f6b3a5" opacity=".55"/>
       ${hat}</svg>`;
   }
+  // the Border Collie stickers in img/pup
+  const pupImg = (name, cls = '') => `<img class="pup-img ${cls}" src="img/pup/${name}.webp" alt="" aria-hidden="true" decoding="async">`;
   const PAW = `<svg class="paw" viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="32" cy="42" rx="13" ry="11"/><ellipse cx="14" cy="28" rx="6" ry="8"/><ellipse cx="26" cy="17" rx="6" ry="8"/><ellipse cx="38" cy="17" rx="6" ry="8"/><ellipse cx="50" cy="28" rx="6" ry="8"/></svg>`;
   function coverHTML(book, tag = 'a') {
-    const kinds = { A1: 'gold', A2: 'beagle' };
+    const pups = { A1: 'level-a1', A2: 'level-a2' };
     return `<${tag} class="cover nlf lv-${(book.level || 'A1').replace('/', '')}" ${tag === 'a' ? `href="#/${book.id}"` : ''} aria-label="${esc(book.title)}">
       <div class="c-num" lang="fr">${esc(book.level || 'A1')}</div>
-      ${puppySVG(kinds[book.level] || 'cream', 'cover-pup')}
+      ${pupImg(pups[book.level] || 'level-b1', 'cover-pup')}
       <div class="c-zh">Road to ${esc(book.level || 'A1')}</div><div class="c-fr" lang="fr">${esc(book.fr)}</div>
       <div class="c-paws" aria-hidden="true">${PAW}${PAW}${PAW}</div></${tag}>`;
   }
@@ -2076,7 +2078,7 @@
     const today = dayStr();
     main.innerHTML = `
       <p class="kicker" lang="fr">Révision du jour</p>
-      <h1 style="font-size:44px">错题本</h1>
+      <h1 class="pup-title" style="font-size:44px">错题本${pupImg('mistakes')}</h1>
       <p class="hint-text" style="margin-top:8px">练习里写错、用了提示或背漏的内容会自动记下来。第二天出现在这里；答对后隔 2、4、7、15 天再复习，连续答对 5 次就算掌握。答错会重新从明天开始。</p>
       <div class="review-stats">
         <div><b>${due.length}</b><span>今天到期</span></div>
@@ -2100,7 +2102,7 @@
           <span class="err-meta">错 ${e.wrong} 次<br>${e.due <= today ? '<b class="w-miss">&nbsp;今天&nbsp;</b>' : e.due.slice(5).replace('-', '/') + ' 复习'}</span>
           <button class="err-del" data-id="${esc(e.id)}" title="移出错题本" aria-label="移出错题本">×</button>
         </div>`).join('')}</section>`).join('')
-        : '<p class="notice">错题本还是空的。去做几课练习吧，写错的会自动出现在这里。</p>'}`;
+        : pupImg('sleep', 'empty-pup') + '<p class="notice">错题本还是空的。去做几课练习吧，写错的会自动出现在这里。</p>'}`;
     $$('.err-del', main).forEach(b => b.onclick = () => { SRS.remove(b.dataset.id); viewReview(); });
     $('#exp', main).onclick = () => BACKUP.download();
     $('#imp', main).onchange = async e => {
@@ -2339,7 +2341,7 @@
     main.innerHTML = `
       <section class="home pup-home">
         <div class="hero">
-          <div class="hero-pup">${puppySVG('gold', 'hero-dog')}<span class="hero-bubble" lang="fr">Wouaf !</span></div>
+          <div class="hero-pup">${pupImg('correct', 'hero-dog')}<span class="hero-bubble" lang="fr">Wouaf !</span></div>
           <div class="hero-text">
             <p class="kicker" lang="fr">Bonjour, petit chien savant</p>
             <h1>Ready to fetch some French words?</h1>

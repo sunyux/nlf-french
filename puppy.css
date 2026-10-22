@@ -557,3 +557,43 @@ main { max-width: 1080px; }
   .top .btn.small { padding: 4px 11px; font-size: 14px; box-shadow: 0 3px 0 var(--line); }
 }
 .spell-opts .opt-t { font-size: 21px; font-weight: 700; }
+
+/* ---------- Border Collie stickers (img/pup) ---------- */
+.pup-img { display: block; height: auto; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .28)); }
+.hero-pup .hero-dog { width: 100%; animation: pup-bob 3.4s ease-in-out infinite; }
+.cover.nlf img.cover-pup { width: 78%; max-width: 210px; margin: 18px 0 6px; transition: transform .3s; }
+.book-head .cover.nlf img.cover-pup { width: 70%; margin: 18px 0 4px; }
+.cover.sons { position: relative; }
+.cover.sons img.cover-pup { position: absolute; right: 8px; bottom: 8px; width: 46%; transition: transform .3s; }
+.cover.sons:hover img.cover-pup { transform: rotate(-6deg) scale(1.06); }
+.brand-logo { background: url("img/pup/level-a1.webp") center 30% / 150% no-repeat, #f3e4cc; }
+
+/* header buttons: the dog does the job */
+.top .settings-btn img { width: 34px; height: 34px; object-fit: contain; pointer-events: none; }
+.top #qs-btn, .top .nav-mine, .top .nav-journal { overflow: visible; padding: 0; }
+
+/* page titles with a sticker beside them */
+.pup-title { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.pup-title .pup-img { width: 92px; margin: -14px 0; transform: rotate(4deg); }
+.empty-pup { width: 170px; margin: 10px auto 6px; }
+.pup-wait { display: inline-flex; align-items: center; gap: 10px; }
+.pup-wait .spin { width: 42px; animation: pup-spin 1s linear infinite; }
+@keyframes pup-spin { to { transform: rotate(-360deg); } }
+
+/* answer feedback: the dog replaces the ✓ / ✗ / ~ badge */
+.feedback { padding-right: 104px !important; min-height: 92px; }
+.feedback::after { content: "" !important; width: 86px !important; height: 86px !important; top: 50% !important; right: 10px !important; margin-top: -43px; border-radius: 0 !important; box-shadow: none !important; background-color: transparent !important; background-position: center !important; background-size: contain !important; background-repeat: no-repeat !important; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .25)); }
+.feedback.ok::after { background: transparent url("img/pup/correct.webp") center / contain no-repeat !important; }
+.feedback.bad::after { background: transparent url("img/pup/wrong.webp") center / contain no-repeat !important; }
+.feedback.accent::after { background: transparent url("img/pup/accent.webp") center / contain no-repeat !important; }
+#hint::before { content: ""; display: inline-block; width: 26px; height: 26px; margin: -6px 6px -8px -4px; vertical-align: middle; background: url("img/pup/hint.webp") center / contain no-repeat; }
+
+/* end of a round */
+.drill.summary:not(.test-intro)::before { content: ""; display: block; width: 170px; height: 170px; margin: -6px auto 4px; background: url("img/pup/complete.webp") center / contain no-repeat; animation: pop .5s cubic-bezier(.2, 1.6, .4, 1); }
+
+/* progress: a Border Collie that gets longer as you go */
+.drill .bar { position: relative; height: 38px; margin: -8px 0 18px; padding: 0 30px 0 24px; background: none !important; overflow: visible; border-radius: 0; }
+.drill .bar::before { content: ""; position: absolute; left: 0; top: 2px; width: 26px; height: 34px; background: url("img/pup/bar-tail.webp") right center / contain no-repeat; }
+.drill .bar i { position: relative; height: 20px; margin-top: 9px; background: linear-gradient(#3b3540 0 58%, #f6f0e8 58%) !important; border: 2px solid #f3e4cc; border-left: 0; border-right: 0; border-radius: 0; box-sizing: content-box; }
+.drill .bar i::after { content: ""; position: absolute; right: -31px; top: -11px; width: 32px; height: 40px; background: url("img/pup/bar-head.webp") left center / contain no-repeat; }
+@media (prefers-reduced-motion: reduce) { .pup-wait .spin, .hero-pup .hero-dog { animation: none; } }
