@@ -626,3 +626,27 @@ html:root.rd-cream body, html:root.rd-blue body, html:root.rd-grey body { backgr
 .round-done { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 8px; }
 .round-pup { width: 54px; height: 54px; object-fit: contain; }
 @media (max-width: 560px) { .btn.big.today-btn { width: 100%; } .hero-text .today-bar { justify-content: center; } }
+
+/* ---------- colours that stay readable: dark mode + colour-weak friendly ---------- */
+/* right / wrong also carry a symbol (✓ ✗) so colour is never the only signal */
+.opt.right::after, .opt.wrong::after { margin-left: auto; font: 700 22px/1 var(--display); }
+.opt.right::after { content: "✓"; color: var(--ok); }
+.opt.wrong::after { content: "✗"; color: var(--bad); }
+/* colour-friendly palette (on by default, Settings → Reading comfort): blue / orange / purple instead of red / green / pink */
+html.cb { --ok: #0b6fb3; --bad: #c2570a; --almost: #8f7000; --g-m: #0b6fb3; --g-f: #c2570a; }
+html.cb .gx-m { --gc: #0b6fb3; }
+html.cb .gx-f { --gc: #c2570a; }
+html.cb .gx-p { --gc: #7b4fa3; }
+/* dark mode: light, high-contrast versions of every word colour (the dark blue / pink / green were hard to read on the dark card) */
+@media (prefers-color-scheme: dark) {
+  html:root:not([data-theme="light"]) { --ok: #6fcf97; --bad: #ff8a7a; --almost: #f2c94c; --g-m: #8fc4ff; --g-f: #ffa3d0; }
+  html:not([data-theme="light"]) .gx-m { --gc: #8fc4ff; }
+  html:not([data-theme="light"]) .gx-f { --gc: #ffa3d0; }
+  html:not([data-theme="light"]) .gx-p { --gc: #86dca6; }
+  html.cb:root:not([data-theme="light"]) { --ok: #5bb8f0; --bad: #ff9a4d; --almost: #f2d84a; --g-m: #7cc4ff; --g-f: #ffa860; }
+  html.cb:not([data-theme="light"]) .gx-m { --gc: #7cc4ff; }
+  html.cb:not([data-theme="light"]) .gx-f { --gc: #ffa860; }
+  html.cb:not([data-theme="light"]) .gx-p { --gc: #d3a6ff; }
+  html:not([data-theme="light"]) .feedback::after, html:not([data-theme="light"]) .opt.right .opt-n, html:not([data-theme="light"]) .opt.wrong .opt-n { color: #1c1812; }
+  html:not([data-theme="light"]) .gx-m .syl.s1, html:not([data-theme="light"]) .gx-f .syl.s1, html:not([data-theme="light"]) .gx-p .syl.s1 { color: var(--gc) !important; }
+}

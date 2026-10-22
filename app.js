@@ -1882,6 +1882,7 @@
       <label class="chk"><input type="checkbox" id="s-rsp" ${settings.rsp ? 'checked' : ''}> ${bi('宽松排版（更大的字距和行距）', 'Roomy spacing (wider letters, words and lines)')}</label>
       <label><span class="lab">${bi('背景颜色', 'Background colour')}</span>
         <select id="s-rbg">${[['default', 'Puppy cream (default)'], ['cream', 'Soft cream'], ['blue', 'Pale blue'], ['grey', 'Soft grey']].map(([k, t]) => `<option value="${k}" ${(settings.rbg || 'default') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="chk"><input type="checkbox" id="s-cb" ${settings.cb !== false ? 'checked' : ''}> ${bi('色弱友好配色（蓝 / 橙 / 紫，代替红 / 绿 / 粉）', 'Colour-weak friendly colours (blue / orange / purple instead of red / green / pink)')}</label>
       <label class="chk"><input type="checkbox" id="s-auto" ${store.get('vauto', false) ? 'checked' : ''}> ${bi('每题自动朗读', 'Say each word out loud automatically')}</label>
       <p class="set-h">${bi('声音', 'Sound')}</p>
       <label><span class="lab">朗读语速 · <b id="rate-v">${settings.rate.toFixed(2)}</b></span>
@@ -1898,6 +1899,7 @@
       <button class="btn ghost small" data-say="Bonjour ! Je m'appelle Alice. Ça va bien ?">试听</button>
       <p class="kbd" style="margin:12px 0 0">macOS 可在 系统设置 › 辅助功能 › 朗读内容 › 系统声音 下载更自然的法语声音（如 Amélie 高音质）。</p>`;
     $('#s-rs').oninput = e => { settings.rs = +e.target.value; $('#rs-v').textContent = settings.rs + '%'; saveSettings(); applyReading(); };
+    $('#s-cb').onchange = e => { settings.cb = e.target.checked; saveSettings(); applyReading(); };
     $('#s-rsp').onchange = e => { settings.rsp = e.target.checked; saveSettings(); applyReading(); };
     $('#s-rbg').onchange = e => { settings.rbg = e.target.value; saveSettings(); applyReading(); };
     $('#s-auto').onchange = e => store.set('vauto', e.target.checked);
@@ -2006,6 +2008,7 @@
     const h = document.documentElement;
     h.style.setProperty('--rs', String((settings.rs || 100) / 100));
     h.classList.toggle('rd-space', !!settings.rsp);
+    h.classList.toggle('cb', settings.cb !== false);
     RD_BG.forEach(b => h.classList.toggle('rd-' + b, (settings.rbg || 'default') === b));
   }
   applyReading();
