@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // dictation site (unchanged)
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /codes/{code} {
+      allow get, create, update: if request.auth != null && code.size() == 14;
+    }
+    // Pawsitive French (nlf-french): same rules, separate collections so the two sites' progress never mixes
+    match /nlf_users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /nlf_codes/{code} {
+      allow get, create, update: if request.auth != null && code.size() == 14;
+    }
+  }
+}

@@ -626,7 +626,7 @@
       }
     },
     doc() {
-      return this.user.isAnonymous ? this.db.collection('codes').doc(this.code()) : this.db.collection('users').doc(this.user.uid);
+      return this.user.isAnonymous ? this.db.collection('nlf_codes').doc(this.code()) : this.db.collection('nlf_users').doc(this.user.uid);
     },
     local() {
       const data = {};
