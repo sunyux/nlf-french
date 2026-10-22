@@ -2211,7 +2211,7 @@
       box.innerHTML = `<div class="drill learn-card ${word && gender(e.pos) ? 'g-' + gender(e.pos) : ''}${word ? gx(e.pos) : ''}">
         <div class="prog-line"><span class="kbd">${i + 1} / ${items.length}</span><span class="kbd" lang="fr">${esc(leconName(e.n))}</span></div>
         <div class="lc-fr" lang="fr">${playBtn(say)} ${word ? artHint(e) : ''}<b>${word ? frHTML(e.fr) : esc(e.fr)}</b></div>
-        <div class="lc-mean">${e.kind === 'cloze' ? esc(e.zh) : G(e)}${e.pos ? ` <span class="pos ${gender(e.pos) ? 'g-' + gender(e.pos) : ''}">${esc(e.pos)}</span>` : ''}</div>
+        <div class="lc-mean">${e.kind === 'cloze' ? esc(e.zh) + (e.sen ? `<div class="cloze-en" lang="en">${esc(e.sen)}</div>` : '') : G(e)}${e.pos ? ` <span class="pos ${gender(e.pos) ? 'g-' + gender(e.pos) : ''}">${esc(e.pos)}</span>` : ''}</div>
         ${e.wrong ? `<p class="kbd">${bi(`写错过 ${e.wrong} 次`, `Missed ${e.wrong} times`)}</p>` : ''}
         ${triesHTML(e)}
         ${(() => { const r = spotInfo(e); return r ? `<div class="lc-spot" lang="fr">${DYS.marked(r.target, r.marks)}</div>${spotLine(e)}` : ''; })()}
@@ -2269,7 +2269,7 @@
         <div class="count">${practice ? bi(`练习 ${round - 1} · `, `Practice ${round - 1} · `) : ''}${i + 1} / ${queue.length} · ${leconName(e.n)}</div>
         <div class="bar"><i style="width:${i / queue.length * 100}%"></i></div>
         <div class="prompt${gx(e.pos)}">${e.kind === 'cloze'
-          ? `<div class="pzh long" lang="fr" style="font-family:var(--serif)">${esc(e.zh).replace('____', '<u>&emsp;?&emsp;</u>')}</div><div class="ppos">填出空缺的词</div>`
+          ? `<div class="pzh long" lang="fr" style="font-family:var(--serif)">${esc(e.zh).replace('____', '<u>&emsp;?&emsp;</u>')}</div>${e.sen ? `<div class="cloze-en" lang="en">${esc(e.sen)}</div>` : ''}<div class="ppos">填出空缺的词</div>`
           : `<div class="pmean ${e.zh.length > 30 ? 'long' : ''}">${MEAN(e)}</div>`}
           <div class="ppos">${playBtn(promptSay(e))} ${esc(e.kind === 'cloze' ? '' : e.pos || '')}</div></div>
         ${word ? `<input class="answer-in" id="ans" lang="fr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${bi('用法语写…', 'Write in French…')}">`
@@ -3262,16 +3262,21 @@
     let blank = 0;
     const heads = new Set(lecon.text.filter(r => r.h).map(r => r.h));
     const lineText = row => row.map(s => typeof s === 'string' ? s : s.b).join('');
-    body.innerHTML = `<p class="hint-text">根据记忆补全课文里的空。<kbd>Enter</kbd> 跳到下一个空，最后点「检查」。</p>
+    const enMap = new Map(lecon.text.filter(r => r.fr).map(r => [r.fr.trim(), (r.en || '').replace(/^–\s*/, '')]));
+    const enOf = row => enMap.get(lineText(row).trim()) || '';
+    const showEn = store.get('clozeEn', true);
+    body.innerHTML = `<p class="hint-text">${bi('根据记忆补全课文里的空。', 'Fill in the missing words.')} <kbd>Enter</kbd> ${bi('跳到下一个空，最后点「检查」。', 'moves to the next gap; press Check at the end.')}</p>
+      <label class="kbd" style="display:flex;gap:6px;align-items:center;margin:0 0 10px"><input type="checkbox" id="cshowen" ${showEn ? 'checked' : ''}> ${bi('显示英文句子', 'Show the English sentence')}</label>
       <div class="textblock">${lecon.cloze.map(row => {
         const blanks = row.filter(s => typeof s !== 'string').length;
         const full = lineText(row);
         if (!blanks && heads.has(full.trim())) return `<div class="tline h" lang="fr">${esc(full)}</div>`;
         return `<div class="tline"><div class="row">${playBtn(full)}<div class="body lfr" lang="fr">${row.map(s => typeof s === 'string' ? esc(s)
-          : `<input class="cloze-in" data-i="${blank++}" data-a="${esc(s.b)}" size="${Math.max(3, s.b.length + 1)}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="填空">`).join('')}</div></div></div>`;
+          : `<input class="cloze-in" data-i="${blank++}" data-a="${esc(s.b)}" size="${Math.max(3, s.b.length + 1)}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="填空">`).join('')}</div></div>${enOf(row) ? `<div class="cloze-en" lang="en" ${showEn ? '' : 'hidden'}>${esc(enOf(row))}</div>` : ''}</div>`;
       }).join('')}</div>
       <div class="toolbar" style="margin-top:16px"><button class="btn" id="ccheck">${bi('检查', 'Check')}</button><button class="btn ghost" id="cshow">${bi('显示答案', 'Show answers')}</button><button class="btn ghost" id="cclear">${bi('清空', 'Clear')}</button><span class="spacer"></span><span class="scorebox" id="cscore"></span></div>`;
     const ins = $$('.cloze-in', body);
+    $('#cshowen', body).onchange = e => { store.set('clozeEn', e.target.checked); $$('.cloze-en', body).forEach(x => x.hidden = !e.target.checked); };
     ins.forEach((inp, k) => inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); (ins[k + 1] || $('#ccheck', body)).focus(); } });
     ins[0] && ins[0].focus();
     const clearMarks = () => { $$('.cloze-fix', body).forEach(x => x.remove()); ins.forEach(i => i.classList.remove('ok', 'bad', 'accent')); };
@@ -3284,7 +3289,7 @@
         inp.classList.add(r);
         const row = inp.closest('.lfr');
         const ctxLine = [...row.childNodes].map(nd => nd === inp ? '____' : nd.nodeType === 3 ? nd.textContent : nd.tagName === 'INPUT' ? nd.dataset.a : '').join('');
-        const it = { book: ctx.book.id, n: ctx.lecon.n, kind: 'cloze', fr: inp.dataset.a, zh: ctxLine.trim() };
+        const it = { book: ctx.book.id, n: ctx.lecon.n, kind: 'cloze', fr: inp.dataset.a, zh: ctxLine.trim(), sen: enOf([...row.childNodes].map(nd => nd === inp ? { b: inp.dataset.a } : nd.nodeType === 3 ? nd.textContent : nd.tagName === 'INPUT' ? { b: nd.dataset.a } : '')) };
         if (r === 'ok') { ok++; SRS.hit(it); }
         else SRS.miss(it, inp.value), inp.value.trim() && ERRS.typed(inp.dataset.a, inp.value), inp.insertAdjacentHTML('afterend', `<span class="cloze-fix">${esc(inp.dataset.a)}</span>`);
       });

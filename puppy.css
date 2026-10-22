@@ -650,3 +650,8 @@ html.cb .gx-p { --gc: #7b4fa3; }
   html:not([data-theme="light"]) .feedback::after, html:not([data-theme="light"]) .opt.right .opt-n, html:not([data-theme="light"]) .opt.wrong .opt-n { color: #1c1812; }
   html:not([data-theme="light"]) .gx-m .syl.s1, html:not([data-theme="light"]) .gx-f .syl.s1, html:not([data-theme="light"]) .gx-p .syl.s1 { color: var(--gc) !important; }
 }
+
+/* English sentence under each fill-the-gap line */
+.cloze-en { margin: 2px 0 0 44px; font: 600 15px/1.4 var(--serif); color: var(--ink-2); letter-spacing: normal; }
+.cloze-en[hidden] { display: none; }
+.drill .cloze-en { margin: 8px 0 0; text-align: center; font-size: 16px; }
