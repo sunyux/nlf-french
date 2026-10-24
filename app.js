@@ -894,8 +894,8 @@
       if (answered) return;
       answered = true;
       const it = queue[i], ok = k === it.a;
-      if (ok) { right++; XP.gain(1, bi('辨音正确', 'Heard it right')); }
-      else ERRS.quiz(l.id, it.w, k);
+      if (ok) { right++; XP.gain(1, bi('辨音正确', 'Heard it right')); i++; draw(); return; }   // right: straight to the next one
+      ERRS.quiz(l.id, it.w, k);
       $$('.choice', pane).forEach(b => { b.disabled = true; if (b.dataset.k === it.a) b.classList.add('ok'); else if (b.dataset.k === k) b.classList.add('bad'); });
       const p = partnerOf(l, it.w);
       $('#fb', pane).innerHTML = `<div class="feedback ${ok ? 'ok' : 'bad'}"><span class="lab">${ok ? bi('对了', 'Right') : bi('听错了，对比一下', 'Not quite — compare them')}</span>
@@ -944,7 +944,8 @@
         if (!inp.value.trim()) return;
         answered = true;
         const ok = inp.value.trim().toUpperCase() === Lt;
-        if (ok) { right++; XP.gain(1, bi('字母正确', 'Letter right')); } else ERRS.quiz(l.id, Lt, inp.value.trim().toUpperCase());
+        if (ok) { right++; XP.gain(1, bi('字母正确', 'Letter right')); i++; draw(); return; }
+        ERRS.quiz(l.id, Lt, inp.value.trim().toUpperCase());
         $('#fb', pane).innerHTML = `<div class="feedback ${ok ? 'ok' : 'bad'}"><span class="lab">${ok ? bi('对了', 'Right') : bi('正确答案', 'Answer')}</span>
           <div class="ans">${playBtn(name)} <b style="font-size:28px">${Lt}</b> <span lang="fr">« ${esc(name)} »</span></div></div>`;
       };
@@ -976,7 +977,8 @@
         if (!inp.value.trim() && !give) return;
         answered = true;
         const r = give ? 'bad' : checkWord(inp.value, it.w), ok = r === 'ok';
-        if (ok) { right++; XP.gain(2, bi('听写正确', 'Dictation right')); } else if (!give) ERRS.typed(it.w, inp.value);
+        if (ok) { right++; XP.gain(2, bi('听写正确', 'Dictation right')); i++; draw(); return; }
+        if (!give) ERRS.typed(it.w, inp.value);
         $('#fb', pane).innerHTML = `<div class="feedback ${ok ? 'ok' : r === 'accent' ? 'accent' : 'bad'}"><span class="lab">${ok ? bi('完全正确', 'Perfect') : r === 'accent' ? bi('差一点：注意重音', 'Almost — check the accents') : bi('正确答案', 'Answer')}</span>
           <div class="ans">${playBtn(it.w)} <span lang="fr">${esc(it.w)}</span> <span class="kbd">${G(it)}</span></div></div>`;
       };
@@ -1361,7 +1363,7 @@
           if (!a.value.trim() && !give) return;
           answered = true;
           const ok = !give && canon(a.value) === canon(it.answer);
-          if (ok) { right++; XP.gain(1, bi('数字听对了', 'Number right')); }
+          if (ok) { right++; XP.gain(1, bi('数字听对了', 'Number right')); i++; draw(); return; }
           $('#nm-fb', box).innerHTML = `<div class="feedback ${ok ? 'ok' : 'bad'}"><span class="lab">${ok ? bi('对了', 'Right') : bi('正确答案', 'Answer')}</span>
             <div class="ans">${playBtn(it.fr)} <b>${esc(it.answer)}</b> <span lang="fr" class="kbd">${esc(it.fr)}</span></div></div>`;
         };
@@ -2349,6 +2351,7 @@
         const next = good ? GAPS[Math.min((e.box || 0) + 1, GAPS.length - 1)] : 1;
         lab = good ? `答对了 · ${(e.box || 0) + 1 >= GAPS.length ? '已掌握' : next + ' 天后再复习'}` : '明天再来一次';
       }
+      if (good) { i++; draw(); return; }   // right: straight to the next one
       $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${lab}</span>
         <div class="ans${gx(e.pos)}" lang="fr">${playBtn(say)}<span>${html}</span></div>
         ${!good && !giveUp && e.kind === 'word' && r !== 'accent' ? dysCompare(answerOf(e), val) : ''}
@@ -2705,7 +2708,8 @@
       const it = { book: v.book, n: v.n, kind: 'word', fr: v.fr, zh: v.zh, en: v.en, pos: v.pos, tip: v.tip, tipEn: v.tipEn, ex: v.ex, g: v.g };
       return it;
     };
-    const draw = () => (st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
+    let offKeys = null;   // the previous question's keyboard listener must not outlive it
+    const draw = () => (offKeys && offKeys(), offKeys = null, st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
     const record = (v, good) => { (good ? st.ok : st.bad).push(wkey(v)); st.i++; save(); };
     const after = v => `${tipBox(wordTip(v.n, v))}${exBox(v)}`;
 
@@ -2727,6 +2731,7 @@
         if (good) { XP.gain(2, 'Full test'); if (!inReview(v.book, v.n, v.fr)) MASTER.word(v.book, v.n, v.fr); else SRS.hit(it); }
         else { SRS.miss(it, giveUp ? '' : inp.value); MASTER.word(v.book, v.n, v.fr, false); if (!giveUp && inp.value.trim()) ERRS.typed(closest(v.fr, inp.value), inp.value); }
         record(v, good);
+        if (good) return draw();   // right: straight to the next one
         $('#fb', box).innerHTML = `<div class="feedback ${r}"><span class="lab">${good ? 'Perfect' : r === 'accent' ? 'Nearly: mind the accents' : giveUp ? 'Answer' : 'Not quite, the answer is'}</span>
           <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${r === 'accent' ? accentDiff(inp.value.trim(), v.fr) : frHTML(v.fr)}</div>
           ${after(v)}
@@ -2825,22 +2830,23 @@
         $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
         if (good) { XP.gain(1, 'Spelling quiz'); if (cfg.mine && inReview(v.book, v.n, v.fr)) SRS.hit(it); } else { SRS.miss(it, opts[k]); MASTER.word(v.book, v.n, v.fr, false); }
         record(v, good);
+        if (good) return draw();
         $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : 'Not quite. It is spelled'}</span>
           <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</div>
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
         const nb = $('#t-next', box); nb.focus(); nb.onclick = draw;
         TTS.say(forms(v.fr).say);
-        if (good) setTimeout(() => { if (box.isConnected && st.order[st.i - 1] === wkey(v) && $('#t-next', box) === nb) draw(); }, 1500);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
       const keys = e => {
         if (!box.isConnected) return document.removeEventListener('keydown', keys);
         if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
         if (e.key >= '1' && e.key <= '4') { e.preventDefault(); choose(+e.key - 1); }
-        else if (e.key === 'Enter' && answered) { e.preventDefault(); document.removeEventListener('keydown', keys); draw(); }
+        else if (e.key === 'Enter' && answered) { e.preventDefault(); draw(); }
       };
       document.addEventListener('keydown', keys);
+      offKeys = () => document.removeEventListener('keydown', keys);
     }
 
     function drawChoose(v) {
@@ -2860,22 +2866,23 @@
         $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
         if (good) XP.gain(1, 'Meaning quiz'); else { SRS.miss(it, ''); MASTER.word(v.book, v.n, v.fr, false); }
         record(v, good);
+        if (good) return draw();
         $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : 'Not quite. It means'}</span>
           <div class="ans${gx(v.pos)}"><span lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</span> = ${esc(right)}</div>
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
         const nb = $('#t-next', box); nb.focus(); nb.onclick = draw;
         TTS.say(forms(v.fr).say);
-        if (good) setTimeout(() => { if (box.isConnected && st.order[st.i - 1] === wkey(v) && $('#t-next', box) === nb) draw(); }, 1500);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
       const keys = e => {
         if (!box.isConnected) return document.removeEventListener('keydown', keys);
         if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
         if (e.key >= '1' && e.key <= '4') { e.preventDefault(); choose(+e.key - 1); }
-        else if (e.key === 'Enter' && answered) { e.preventDefault(); document.removeEventListener('keydown', keys); draw(); }
+        else if (e.key === 'Enter' && answered) { e.preventDefault(); draw(); }
       };
       document.addEventListener('keydown', keys);
+      offKeys = () => document.removeEventListener('keydown', keys);
     }
 
     function finish() {
@@ -2988,6 +2995,7 @@
         }
       } else if (test || !inReview(bk, ln, v.fr)) MASTER.word(bk, ln, v.fr);
       else SRS.hit(it);
+      if (good && !hintN) { i++; draw(); return; }   // right first time: straight to the next one
       fb.innerHTML = `<div class="feedback ${r}">
         <span class="lab">${good ? (hintN ? '对了（用了提示）' : '完全正确') : r === 'accent' ? '差一点：注意重音符号' : giveUp ? '答案' : '不对，正确答案是'}</span>
         <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${r === 'accent' ? accentDiff(inp.value.trim(), v.fr) : frHTML(v.fr)}</div>
@@ -2996,7 +3004,6 @@
         ${test && missN ? `<span class="lab">${toBook ? bi(`首测已经错了 ${missN} 次，加入错题本了`, `Missed ${missN} times in first tests — added to the mistake book`) : missN >= 3 ? bi('已经在错题本里了', 'Already in the mistake book') : bi(`首测错了 ${missN} 次（错满 3 次会进错题本）`, `Missed ${missN} times in first tests (3 puts it in the mistake book)`)}</span>` : ''}
         ${tipBox(wordTip(ctx.lecon.n, v))}${exBox(v)}</div>`;
       TTS.say(forms(v.fr).say);
-      if (good && !hintN) setTimeout(() => { if (answered && queue[i] === v) { i++; draw(); } }, wordTip(ctx.lecon.n, v) ? 1800 : 1100);
     };
     const done = () => {
       if (test) { const m = MASTER.get(ctx.book.id, ctx.lecon.n); m.test = dayStr(); MASTER.put(ctx.book.id, ctx.lecon.n, m); }
@@ -3235,12 +3242,12 @@
       if (good) { right++; XP.gain(1, '变位正确'); }
       const it = { book: book.id, n: v.n, kind: 'word', fr: c.text, zh: `${forms(v.fr).say} · ${c.p}（现在时）`, en: `${forms(v.fr).say} · ${c.p} (present tense)`, pos: '变位' };
       good ? SRS.hit(it) : SRS.miss(it, giveUp ? '' : val);
+      if (good) { i++; draw(); return; }   // right: straight to the next one
       $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : r === 'bad' ? 'bad' : 'accent'}">
         <span class="lab">${good ? '正确' : r === 'accent' ? '差一点：注意重音' : r === 'pron' ? '动词对了，记得连主语一起写' : '正确答案'}</span>
         <div class="ans" lang="fr">${playBtn(c.text)} ${esc(c.text)} <span class="kbd" style="font-family:var(--zh)">${esc(v.fr)} · ${G(v)}</span></div>
         <div class="tip"><span class="tip-lab">记忆提示</span>${verbTip(v.fr)}</div></div>`;
-      if (see || !good) TTS.say(c.text);
-      if (good) setTimeout(() => { if (answered && queue[i] && queue[i].c === c) { i++; draw(); } }, 1600);
+      TTS.say(c.text);
     };
     draw();
   }
@@ -3341,6 +3348,7 @@
         d.perfect ? SRS.hit(it) : SRS.miss(it, giveUp ? '' : val);
         if (!d.perfect && !giveUp) ERRS.sentence(s.fr, val);
       }
+      if (d.perfect && !giveUp) { i++; draw(); return; }   // right: straight to the next one
       const cls = d.perfect ? 'ok' : d.score > 0.7 ? 'accent' : 'bad';
       $('#fb', body).innerHTML = `<div class="feedback ${cls}">
         <span class="lab">${d.perfect ? '完全正确' : giveUp ? '答案' : `对了 ${Math.round(d.score * 100)}% · 绿色=对 · 波浪线=重音 · 红色=漏写或写错`}</span>
