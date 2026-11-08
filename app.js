@@ -1796,6 +1796,22 @@
     stop: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" fill="currentColor"/></svg>',
     mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
   };
+  // phones: after a wrong answer bring the answer card up under the header (not the bottom of the page),
+  // and start each new question at the top of the exercise
+  const HEADER_GAP = () => (innerWidth < 700 ? 150 : 90);
+  function revealFb(el) {
+    const f = el && (el.matches && el.matches('.feedback') ? el : el && el.querySelector('.feedback'));
+    if (!f) return;
+    requestAnimationFrame(() => {
+      const top = f.getBoundingClientRect().top;
+      if (top > innerHeight * 0.5 || top < HEADER_GAP()) window.scrollTo({ top: scrollY + top - HEADER_GAP(), behavior: 'smooth' });
+    });
+  }
+  function toDrill(box) {
+    if (!box || !box.isConnected) return;
+    const top = box.getBoundingClientRect().top;
+    if (top < HEADER_GAP() - 20 || top > innerHeight * 0.45) window.scrollTo({ top: Math.max(0, scrollY + top - HEADER_GAP()) });
+  }
   const playBtn = (text, extra = '') => `<button class="play ${extra}" data-say="${esc(text)}" aria-label="朗读" title="朗读">${ICON.play}</button>`;
   /* ---------- in-depth word card (words-deep.js): meaning, sound, roots, examples, collocations, register, use ---------- */
   function openDeep(fr) {
@@ -2362,6 +2378,7 @@
         if (wrong.length) $('#again-wrong', box).onclick = () => reviewChoice(box, shuffle(wrong), round + 1);
         return;
       }
+      toDrill(box);
       const e = queue[i]; answered = false; q = choiceQuestion(e);
       box.innerHTML = `<div class="drill">
         <div class="count">${practice ? bi(`练习 ${round - 1} · `, `Practice ${round - 1} · `) : ''}${i + 1} / ${queue.length} · ${leconName(e.n)}</div>
@@ -2390,7 +2407,7 @@
         ${q.tip || ''}${q.full}
         <div class="toolbar"><button class="btn small" id="t-next">${i + 1 >= queue.length ? bi('看结果', 'See the result') : bi('下一个', 'Next') + ' ›'}</button></div></div>`;
       TTS.say(q.say);
-      const nb = $('#t-next', box); nb.focus(); nb.onclick = () => { i++; draw(); };
+      const nb = $('#t-next', box); nb.focus({ preventScroll: true }); nb.onclick = () => { i++; draw(); }; revealFb($('#fb', box));
     };
     const keys = ev => {
       if (!box.isConnected) return document.removeEventListener('keydown', keys);
@@ -2741,7 +2758,7 @@
       return it;
     };
     let offKeys = null;   // the previous question's keyboard listener must not outlive it
-    const draw = () => (offKeys && offKeys(), offKeys = null, st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
+    const draw = () => (toDrill(box), offKeys && offKeys(), offKeys = null, st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
     const record = (v, good) => { (good ? st.ok : st.bad).push(wkey(v)); st.i++; save(); };
     const after = v => `${tipBox(wordTip(v.n, v))}${exBox(v)}`;
 
@@ -2768,7 +2785,7 @@
           <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${r === 'accent' ? accentDiff(inp.value.trim(), v.fr) : frHTML(v.fr)}</div>
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
-        $('#t-next', box).onclick = draw; $('#t-next', box).focus();
+        $('#t-next', box).onclick = draw; $('#t-next', box).focus({ preventScroll: true }); revealFb($('#fb', box));
         TTS.say(forms(v.fr).say);
       };
       inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); answered ? draw() : check(false); } };
@@ -2869,7 +2886,7 @@
           <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</div>
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
-        const nb = $('#t-next', box); nb.focus(); nb.onclick = draw;
+        const nb = $('#t-next', box); nb.focus({ preventScroll: true }); nb.onclick = draw; revealFb($('#fb', box));
         TTS.say(forms(v.fr).say);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
@@ -2906,9 +2923,9 @@
         if (good) return draw();
         $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : k < 0 ? 'No problem. It means' : 'Not quite. It means'}</span>
           <div class="ans${gx(v.pos)}"><span lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</span> = ${esc(right)}</div>
-          ${after(v)}
+          ${exBox(v)}${tipBox(wordTip(v.n, v))}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
-        const nb = $('#t-next', box); nb.focus(); nb.onclick = draw;
+        const nb = $('#t-next', box); nb.focus({ preventScroll: true }); nb.onclick = draw; revealFb($('#fb', box));
         TTS.say(forms(v.fr).say);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
@@ -3042,6 +3059,7 @@
         ${test && missN ? `<span class="lab">${toBook ? bi(`首测已经错了 ${missN} 次，加入错题本了`, `Missed ${missN} times in first tests — added to the mistake book`) : missN >= 3 ? bi('已经在错题本里了', 'Already in the mistake book') : bi(`首测错了 ${missN} 次（错满 3 次会进错题本）`, `Missed ${missN} times in first tests (3 puts it in the mistake book)`)}</span>` : ''}
         ${tipBox(wordTip(ctx.lecon.n, v))}${exBox(v)}</div>`;
       TTS.say(forms(v.fr).say);
+      revealFb(fb);
     };
     const done = () => {
       if (test) { const m = MASTER.get(ctx.book.id, ctx.lecon.n); m.test = dayStr(); MASTER.put(ctx.book.id, ctx.lecon.n, m); }
