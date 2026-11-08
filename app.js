@@ -885,17 +885,20 @@
         <div class="prompt">${playBtn(it.w, 'big')}
           <div class="ppos">${l.quiz.type === 'spell' ? `${bi('这个词用的是哪种写法？', 'Which spelling does this word use?')} · ${G(it)}` : bi('你听到的是哪个音？', 'Which sound do you hear?')}</div></div>
         <div class="choices">${opts.map((o, k) => `<button class="choice" data-k="${esc(o.k)}"><kbd>${k + 1}</kbd> <span lang="fr">${esc(L() === 'en' ? o.labelEn || o.label : o.label)}</span></button>`).join('')}</div>
+        <div class="skip-row"><button class="btn ghost small" id="s-idk">${bi('不会，下一个', "I don't know · next")}</button></div>
         <div id="fb"></div>
         <p class="kbd" style="margin-top:12px">${bi('数字键选择 · 空格再听一次 · Enter 下一题', 'Number keys to choose · Space to replay · Enter for next')}</p></div>`;
       setTimeout(() => TTS.say(it.w), 250);
       $$('.choice', pane).forEach(b => b.onclick = () => answer(b.dataset.k));
+      $('#s-idk', pane).onclick = () => answer('?');
     };
     const answer = k => {
       if (answered) return;
       answered = true;
       const it = queue[i], ok = k === it.a;
       if (ok) { right++; XP.gain(1, bi('辨音正确', 'Heard it right')); i++; draw(); return; }   // right: straight to the next one
-      ERRS.quiz(l.id, it.w, k);
+      if (k !== '?') ERRS.quiz(l.id, it.w, k);
+      $('#s-idk', pane).disabled = true;
       $$('.choice', pane).forEach(b => { b.disabled = true; if (b.dataset.k === it.a) b.classList.add('ok'); else if (b.dataset.k === k) b.classList.add('bad'); });
       const p = partnerOf(l, it.w);
       $('#fb', pane).innerHTML = `<div class="feedback ${ok ? 'ok' : 'bad'}"><span class="lab">${ok ? bi('对了', 'Right') : bi('听错了，对比一下', 'Not quite — compare them')}</span>
@@ -2106,7 +2109,7 @@
     }
     if (sub === 'go' || sub === 'listen' || sub === 'early' || sub === 'early-listen') {
       main.innerHTML = '<div class="toolbar"><a class="btn ghost small" href="#/review">‹ 返回错题本</a></div><div id="drill"></div>';
-      return reviewDrill($('#drill'), shuffle(sub.startsWith('early') ? active : due));
+      return reviewChoice($('#drill'), shuffle(sub.startsWith('early') ? active : due));
     }
     const byLecon = {};
     active.sort((a, b) => a.n - b.n || a.due.localeCompare(b.due)).forEach(e => (byLecon[e.n] = byLecon[e.n] || []).push(e));
@@ -2240,134 +2243,163 @@
     draw();
   }
 
-  function reviewDrill(box, queue, round = 1) {
+  /* ---------- mistake-book review: multiple choice only ----------
+     A word comes in one of two forms (picked at random):
+       · the English meaning, with a French example sentence under it (the word gapped out), pick the French word;
+       · the French example sentence with the word gapped out, its English translation under it, pick the word.
+     Gap-fill and sentence mistakes are choices too. A right answer goes straight on; a wrong answer or
+     "I don't know · next" counts as a miss and shows the answer. */
+  const coreFr = fr => norm(fr).split(' / ')[0].replace(/\([^)]*\)/g, '').replace(/^(le |la |les |l'|un |une |des |du |de la |de l'|d'|un\(e\) )/, '').trim();
+  let CHOICE_POOL = null;
+  const choicePool = () => CHOICE_POOL || (CHOICE_POOL = BOOKS.filter(b => b.flat).flatMap(b => b.units.flatMap(u => u.lecons.flatMap(l => l.vocab.map(v => ({ ...v, book: b.id, n: l.n }))))));
+  // the sentence with the word replaced by ____ (null when the word is not in it); loose = also match an inflected form (parl-)
+  function gapSentence(sentence, fr, loose = false) {
+    const core = coreFr(fr); if (core.length < 2) return null;
+    const re = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const s = sentence.replace(/[’]/g, "'");
+    const find = rx => { const m = rx.exec(s); if (!m) return null; const at = m.index + m[1].length; return { text: s.slice(0, at) + '____' + s.slice(at + m[2].length), word: m[2], exact: true }; };
+    const exact = find(new RegExp(`(^|[^\\p{L}])(${re(core)})(?![\\p{L}])`, 'iu'));
+    if (exact || !loose || core.length < 5) return exact;
+    const part = find(new RegExp(`(^|[^\\p{L}])(${re(core.slice(0, -2))}\\p{L}*)`, 'iu'));
+    return part && { ...part, exact: false };
+  }
+  // three wrong answers that look like real candidates: same kind of word, same unit, similar spelling
+  function pickDistractors(v, label) {
+    const a = coreFr(v.fr), mean = norm(v.en || '');
+    const ranked = choicePool().filter(x => x.fr !== v.fr).map(x => {
+      const c = coreFr(x.fr), d = lev(a, c);
+      let sc = Math.random() * 2;
+      if (v.pos && x.pos === v.pos) sc += 3;
+      if (x.n === v.n) sc += 1.5;
+      if (d <= 2) sc += 5; else if (d <= 3) sc += 2;
+      let p = 0; while (p < a.length && p < c.length && a[p] === c[p]) p++;
+      if (p >= 3) sc += 1.5;
+      return [sc, x];
+    }).sort((p, q) => q[0] - p[0]).map(t => t[1]);
+    const seen = new Set([norm(label(v))]), out = [];
+    for (const x of ranked) {
+      if (mean && norm(x.en || '') === mean) continue;
+      const l = label(x); if (!l || seen.has(norm(l))) continue;
+      seen.add(norm(l)); out.push(l); if (out.length === 3) break;
+    }
+    return out;
+  }
+  const capLike = (ref, t) => /^\p{Lu}/u.test(ref) ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+  const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
+  // build one multiple-choice question for a mistake-book item
+  function choiceQuestion(e) {
+    const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
+    const v = lecon && e.kind === 'word' ? lecon.vocab.find(x => x.fr === e.fr) : null;
+    const info = enFill({ ...(v || {}), ...e });
+    const q = { say: e.kind === 'word' && e.pos !== '变位' ? forms(e.fr).say : e.fr, right: e.fr, full: '', tip: '' };
+    const finish = (right, wrongs) => {
+      const opts = shuffle([right, ...wrongs]);
+      while (opts.length < 2) opts.push(right + 's');
+      q.options = opts; q.right = right; return q;
+    };
+    if (e.kind === 'sentence') {
+      const sents = lecon ? sentences(lecon) : [];
+      const a = norm(e.fr);
+      const wrongs = sents.filter(s => norm(s.fr) !== a).map(s => [lev(a, norm(s.fr)) + Math.random() * 3, s.fr]).sort((x, y) => x[0] - y[0]).slice(0, 3).map(t => t[1]);
+      q.head = `<div class="pmean long">${esc(info.en || Gt(info) || '')}</div><div class="ppos">Pick the French sentence</div>`;
+      q.full = `<div class="ex-line"><span class="ex-fr" lang="fr">${playBtn(e.fr)} ${esc(e.fr)}</span></div>`;
+      return finish(e.fr, wrongs);
+    }
+    if (e.kind === 'cloze') {
+      const sentence = e.zh.replace('____', e.fr);
+      const row = lecon && lecon.text.find(r => r.fr && r.fr.trim() === sentence.trim());
+      const en = e.sen || (row && row.en) || '';
+      const wrongs = pickDistractors({ fr: e.fr, pos: '', n: e.n }, x => capLike(e.fr, coreFr(x.fr)));
+      q.head = `<div class="q-sent" lang="fr">${gapHTML(e.zh)}</div>${en ? `<div class="cloze-en" lang="en">${esc(en)}</div>` : ''}<div class="ppos">Pick the missing word</div>`;
+      q.full = `<div class="ex-line"><span class="ex-fr" lang="fr">${playBtn(sentence)} ${esc(sentence)}</span>${en ? `<span class="ex-tr">${esc(en)}</span>` : ''}</div>`;
+      q.say = sentence;
+      return finish(e.fr, wrongs);
+    }
+    if (e.pos === '变位') {
+      const inf = (e.zh || '').split(' · ')[0], rows = conjugate(inf) || [];
+      const me = rows.find(r => norm(r.text) === norm(e.fr) || e.fr.endsWith(r.form));
+      const wrongs = shuffle(rows.filter(r => !me || r.form !== me.form).map(r => r.text)).filter((t, k, a) => a.indexOf(t) === k && norm(t) !== norm(e.fr)).slice(0, 3);
+      q.head = `<div class="pmean">${esc(info.en || e.zh)}</div><div class="ppos">Pick the right verb form</div>`;
+      q.tip = verbTip(inf);
+      return finish(e.fr, wrongs);
+    }
+    // a word: form A (meaning + gapped example) or form B (gapped example + its translation)
+    const ex = info.ex && info.ex[0] ? info.ex : null;
+    const exact = ex && gapSentence(ex[0], e.fr);
+    q.full = exBox(info);
+    q.tip = e.n ? tipBox(wordTip(e.n, info)) : '';
+    if (exact && Math.random() < 0.5) {
+      const wrongs = pickDistractors(info, x => capLike(exact.word, coreFr(x.fr)));
+      q.head = `<div class="q-sent" lang="fr">${gapHTML(exact.text)}</div><div class="cloze-en" lang="en">${esc(ex[2] || '')}</div><div class="ppos">Pick the missing word</div>`;
+      return finish(exact.word, wrongs);
+    }
+    const gap = ex && (exact || gapSentence(ex[0], e.fr, true));
+    q.head = `<div class="pmean ${gx(info.pos)}">${MEAN(info)}</div>
+      <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
+      ${gap ? `<div class="q-sent small" lang="fr">${gapHTML(gap.text)}</div>` : ''}`;
+    return finish(e.fr, pickDistractors(info, x => x.fr));
+  }
+
+  function reviewChoice(box, queue, round = 1) {
     const practice = round > 1;
-    // errorless review: wrong answers are copied right once (the wrong spelling is cleared away),
-    // "I'm stuck" shows the answer to memorise instead of guessing; words missed 3+ times are shown automatically before you write
-    let i = 0, answered = false, right = 0, stage = 'ask', peeked = false;
+    let i = 0, answered = false, right = 0, q = null;
     const wrong = [];
-    const answerOf = e => e.kind === 'word' ? closest(e.fr, '') : e.fr;
     const draw = () => {
       if (i >= queue.length) {
         const allRight = !wrong.length;
         box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">${practice ? bi(`第 ${round - 1} 轮练习`, `Practice round ${round - 1}`) : 'Bilan'}</p>
           <div class="score">${right} / ${queue.length}</div>
           <p>${allRight ? (practice ? bi('全部答对了！今天的错题都练会了。', 'All right! You have learned today\'s misses.') : bi('全部答对！', 'All correct!'))
-            : practice ? bi(`还有 ${wrong.length} 个没写对，再来一轮。`, `${wrong.length} still wrong — one more round.`)
+            : practice ? bi(`还有 ${wrong.length} 个没选对，再来一轮。`, `${wrong.length} still wrong — one more round.`)
             : bi('答错的明天会再出现。现在可以先把它们练对。', 'The ones you missed come back tomorrow. Practise them now until they are right.')}</p>
-          ${wrong.length ? `<ul>${wrong.map(e => `<li><span lang="fr">${esc(e.fr)}</span><span class="w-zh">${e.kind === 'cloze' ? esc(e.zh) : G(e)}</span></li>`).join('')}</ul>` : ''}
+          ${wrong.length ? `<ul>${wrong.map(e => `<li><span lang="fr">${esc(e.fr)}</span><span class="w-zh">${e.kind === 'cloze' ? esc(e.zh) : G(enFill(e))}</span></li>`).join('')}</ul>` : ''}
           <div class="drill-actions" style="justify-content:center">
             ${wrong.length ? `<button class="btn" id="again-wrong">${bi(`练习答错的（${wrong.length}）`, `Practise the misses (${wrong.length})`)}</button>` : ''}
             <a class="btn ${wrong.length ? 'ghost' : ''}" href="#/review">${bi('回到错题本', 'Back to mistake book')}</a>${slipBtn('slip')}</div></div>`;
         $('#slip', box).onclick = () => printSlip(practice ? bi(`错题练习 · 第 ${round - 1} 轮`, `PRATIQUE · TOUR ${round - 1}`) : bi('今日复习', 'RÉVISION DU JOUR'),
           [pad(bi('题数', 'Questions'), queue.length), pad(bi('答对', 'Justes'), right), pad(bi('今日分数', 'Points'), XP.today().xp), pad(bi('连续天数', 'Série'), XP.streak()),
             ...(wrong.length ? ['', bi('要再看看：', 'À revoir :'), ...wrong.slice(0, 12).map(e => '  ' + e.fr.slice(0, 26))] : ['', bi('全部答对！', 'Sans faute !')])]);
-        if (wrong.length) $('#again-wrong', box).onclick = () => reviewDrill(box, shuffle(wrong), round + 1);
+        if (wrong.length) $('#again-wrong', box).onclick = () => reviewChoice(box, shuffle(wrong), round + 1);
         return;
       }
-      const e = queue[i]; answered = false; stage = 'ask'; peeked = false;
-      const word = e.kind !== 'sentence';
+      const e = queue[i]; answered = false; q = choiceQuestion(e);
       box.innerHTML = `<div class="drill">
         <div class="count">${practice ? bi(`练习 ${round - 1} · `, `Practice ${round - 1} · `) : ''}${i + 1} / ${queue.length} · ${leconName(e.n)}</div>
         <div class="bar"><i style="width:${i / queue.length * 100}%"></i></div>
-        <div class="prompt${gx(e.pos)}">${e.kind === 'cloze'
-          ? `<div class="pzh long" lang="fr" style="font-family:var(--serif)">${esc(e.zh).replace('____', '<u>&emsp;?&emsp;</u>')}</div>${e.sen ? `<div class="cloze-en" lang="en">${esc(e.sen)}</div>` : ''}<div class="ppos">填出空缺的词</div>`
-          : `<div class="pmean ${e.zh.length > 30 ? 'long' : ''}">${MEAN(e)}</div>`}
-          <div class="ppos">${playBtn(promptSay(e))} ${esc(e.kind === 'cloze' ? '' : e.pos || '')}</div></div>
-        ${word ? `<input class="answer-in" id="ans" lang="fr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${bi('用法语写…', 'Write in French…')}">`
-          : `<textarea class="answer-in" id="ans" lang="fr" rows="2" autocapitalize="off" spellcheck="false" placeholder="${bi('写出法语句子…', 'Write the French sentence…')}"></textarea>`}
-        ${word ? spotLine(e) : ''}
-        <div id="peek"></div>
-        <div class="drill-actions"><button class="btn ghost small" id="skip">${bi('不会，看答案', 'Show answer')}</button>
-          <button class="btn ghost small peek-btn" id="stuck">${bi('卡住了，先看一眼', 'Stuck — show me first')}</button>
-          ${word ? dysTools() : ''}
-          <span class="spacer"></span><span class="kbd"><kbd>Enter</kbd> 检查 / 下一个</span></div>
+        <div class="prompt choose-prompt">${q.head}</div>
+        <div class="opts">${q.options.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t" lang="fr">${esc(o)}</span></button>`).join('')}</div>
+        <div class="skip-row"><button class="btn ghost small" id="idk">${bi('不会，下一个', "I don't know · next")}</button></div>
         <div id="fb"></div></div>`;
-      const inp = $('#ans', box); inp.focus();
-      if (store.get('vauto', false)) setTimeout(() => TTS.say(promptSay(e)), 200);
-      inp.onkeydown = ev => {
-        if (ev.key !== 'Enter' || ev.shiftKey) return;
-        ev.preventDefault();
-        if (stage === 'copy') return copyCheck();
-        answered ? (i++, draw()) : check();
-      };
-      $('#skip', box).onclick = () => check(true);
-      $('#stuck', box).onclick = () => peek(e);
-      if (word) bindDys(box, () => answerOf(e), inp);
-      // missed 3+ times: look first, then write — so the right spelling is the one that gets practised
-      if (!practice && (e.wrong || 0) >= 3) peek(e, true);
+      $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
+      $('#idk', box).onclick = () => choose(-1);
     };
-    // show the answer for a moment, then hide it and write it from memory
-    const peek = (e, auto = false) => {
-      if (answered) return;
-      peeked = !auto; // only a look the learner asked for delays the schedule; the automatic one is just a study aid
-      const inp = $('#ans', box), p = $('#peek', box), ans = answerOf(e);
-      inp.value = ''; inp.disabled = true; $('#stuck', box).disabled = true;
-      p.innerHTML = `<div class="peek-card"><span class="lab">${auto ? bi('这个错过好几次了，先看清楚再写', 'Missed this a few times — look first, then write') : bi('看清楚，记住它', 'Look carefully and remember it')}</span>
-        <div class="peek-ans" lang="fr">${playBtn(e.kind === 'word' ? forms(e.fr).say : e.fr)} ${e.kind === 'word' ? frHTML(ans) : esc(ans)}</div><i class="peek-bar"></i></div>`;
-      TTS.say(e.kind === 'word' ? forms(e.fr).say : e.fr);
-      const ms = Math.min(7000, 2500 + ans.length * 90);
-      p.querySelector('.peek-bar').style.animationDuration = ms + 'ms';
-      setTimeout(() => {
-        if (queue[i] !== e || answered) return;
-        p.innerHTML = `<p class="kbd peek-now">${bi('现在凭记忆写出来', 'Now write it from memory')}</p>`;
-        inp.disabled = false; inp.focus();
-      }, ms);
-    };
-    // after a mistake: copy the right answer once, with the wrong one cleared away
-    const copyCheck = () => {
-      const e = queue[i], inp = $('#ans', box), val = inp.value;
-      const ok = e.kind === 'sentence' ? diff(e.fr, val).perfect : checkWord(val, e.fr) === 'ok';
-      if (!ok) { inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake'); return; }
-      stage = 'done'; answered = true;
-      inp.classList.add('copied'); inp.readOnly = true;
-      const c = $('#copy-note', box); if (c) c.innerHTML = `✓ ${bi('好，就是这个样子。按 Enter 继续', 'That\'s the one. Press Enter to go on')}`;
-    };
-    const check = (giveUp = false) => {
-      const e = queue[i], val = $('#ans', box).value;
-      if (!val.trim() && !giveUp) return;
-      answered = true;
-      const say = e.kind === 'word' ? forms(e.fr).say : e.fr;
-      let good, html, r = 'ok';
-      if (e.kind === 'sentence') {
-        const d = diff(e.fr, giveUp ? '' : val);
-        good = d.perfect; html = giveUp ? esc(e.fr) : marked(e.fr, d.st);
-        if (!good && !giveUp) ERRS.sentence(e.fr, val);
-      } else {
-        r = giveUp ? 'bad' : checkWord(val, e.fr);
-        if (r !== 'ok' && !giveUp) ERRS.typed(e.kind === 'word' && e.pos !== '变位' ? closest(e.fr, val) : e.fr, val);
-        good = r === 'ok'; html = (e.kind === 'word' ? frHTML(e.fr) : esc(e.fr)) + (r === 'accent' ? ' <span class="kbd">（注意重音）</span>' : '');
+    const choose = k => {
+      if (answered) return; answered = true;
+      const e = queue[i], good = k >= 0 && q.options[k] === q.right;
+      $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', q.options[j] === q.right); b.classList.toggle('wrong', j === k && !good); });
+      $('#idk', box).disabled = true;
+      if (good) {
+        right++;
+        if (practice) XP.gain(1, bi('练习答对', 'Practice right')); else { SRS.hit(e); XP.gain(3, '复习答对'); }
+        i++; draw(); return;   // right: straight to the next one
       }
-      if (good) right++; else wrong.push(e);
-      let lab;
-      if (peeked && good) {
-        if (!practice) SRS.again(e);
-        lab = bi('写对了（先看过答案）· 明天再巩固一次', 'Right (after a look) · once more tomorrow');
-      } else if (practice) {
-        if (good) XP.gain(1, bi('练习答对', 'Practice right'));
-        lab = good ? bi('对了', 'Right') : bi('还没对，等下再来', 'Not yet — it will come back');
-      } else {
-        good ? (SRS.hit(e), XP.gain(3, '复习答对')) : SRS.miss(e, giveUp ? '' : val);
-        const next = good ? GAPS[Math.min((e.box || 0) + 1, GAPS.length - 1)] : 1;
-        lab = good ? `答对了 · ${(e.box || 0) + 1 >= GAPS.length ? '已掌握' : next + ' 天后再复习'}` : '明天再来一次';
-      }
-      if (good) { i++; draw(); return; }   // right: straight to the next one
-      $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${lab}</span>
-        <div class="ans${gx(e.pos)}" lang="fr">${playBtn(say)}<span>${html}</span></div>
-        ${!good && !giveUp && e.kind === 'word' && r !== 'accent' ? dysCompare(answerOf(e), val) : ''}
-        ${e.kind === 'word' ? tipBox(e.pos === '变位' ? verbTip(e.zh.split(' · ')[0].replace(/^(se |s')/, '')) : wordTip(e.n, e)) + exBox(e) : ''}
-        ${good ? '' : `<p class="copy-note" id="copy-note">${bi('照着上面的正确答案，在输入框里抄一遍', 'Copy the right answer above into the box once')}
-          <button class="btn ghost small" id="copy-skip">${bi('跳过', 'Skip')}</button></p>`}</div>`;
-      TTS.say(say);
-      $('#stuck', box).disabled = true;
-      if (!good) {
-        // clear the wrong spelling away and make the right one the last thing typed
-        const inp = $('#ans', box);
-        stage = 'copy'; answered = false;
-        inp.value = ''; inp.disabled = false; inp.placeholder = bi('抄一遍正确答案…', 'Copy the right answer…'); inp.focus();
-        $('#copy-skip', box).onclick = () => { stage = 'done'; answered = true; i++; draw(); };
-      }
+      wrong.push(e);
+      if (!practice) SRS.miss(e, k >= 0 ? q.options[k] : '');
+      $('#fb', box).innerHTML = `<div class="feedback bad"><span class="lab">${k < 0 ? bi('没关系，答案是', 'No problem — the answer is') : bi('不对，答案是', 'Not quite — the answer is')}${practice ? '' : ' · ' + bi('明天再来一次', 'back tomorrow')}</span>
+        <div class="ans${gx(e.pos)}" lang="fr">${playBtn(q.say)} ${esc(q.right)}</div>
+        ${q.tip || ''}${q.full}
+        <div class="toolbar"><button class="btn small" id="t-next">${i + 1 >= queue.length ? bi('看结果', 'See the result') : bi('下一个', 'Next') + ' ›'}</button></div></div>`;
+      TTS.say(q.say);
+      const nb = $('#t-next', box); nb.focus(); nb.onclick = () => { i++; draw(); };
     };
+    const keys = ev => {
+      if (!box.isConnected) return document.removeEventListener('keydown', keys);
+      if (!q || /INPUT|TEXTAREA/.test(document.activeElement.tagName) || i >= queue.length) return;
+      if (ev.key >= '1' && ev.key <= '4' && +ev.key <= q.options.length) { ev.preventDefault(); choose(+ev.key - 1); }
+      else if (ev.key === '0' && !answered) { ev.preventDefault(); choose(-1); }
+      else if (ev.key === 'Enter' && answered) { ev.preventDefault(); i++; draw(); }
+    };
+    document.addEventListener('keydown', keys);
     draw();
   }
 
@@ -2401,7 +2433,7 @@
         <p class="hint-text">Amazing. Pick any book to practise the quizzes again.</p><a class="btn" href="#/">Home</a></div>`;
       return;
     }
-    if (plan.kind === 'review') return reviewDrill(box, plan.items);
+    if (plan.kind === 'review') return reviewChoice(box, plan.items);
     const items = plan.rest.slice(0, TODAY_NEW).map(v => ({ ...v, kind: 'word', book: plan.book.id, n: plan.lecon.n }));
     const quiz = () => testRun(box, {
       id: `today:${plan.book.id}:${plan.lecon.n}`, kind: 'write', today: true, title: `${leconName(plan.lecon.n)} · today`,
@@ -2820,6 +2852,7 @@
         <div class="prompt choose-prompt${gx(v.pos)}"><div class="pmean">${MEAN(v)}</div>
           <div class="ppos">${playBtn(forms(v.fr).say)} <span class="pos ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}">${esc(v.pos)}</span> <span class="kbd">tap the speaker to hear it</span></div></div>
         <div class="opts spell-opts">${opts.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t" lang="fr">${esc(o)}</span></button>`).join('')}</div>
+        <div class="skip-row"><button class="btn ghost small" id="t-idk">I don't know · next</button></div>
         <div class="drill-actions">${leave}<span class="spacer"></span><span class="kbd"><kbd>1</kbd>–<kbd>4</kbd> choose · <kbd>Enter</kbd> next</span></div>
         <div id="fb"></div></div>`;
       bindPause();
@@ -2828,10 +2861,11 @@
         if (answered) return; answered = true;
         const good = opts[k] === right, it = note(v);
         $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
+        $('#t-idk', box).disabled = true;
         if (good) { XP.gain(1, 'Spelling quiz'); if (cfg.mine && inReview(v.book, v.n, v.fr)) SRS.hit(it); } else { SRS.miss(it, opts[k]); MASTER.word(v.book, v.n, v.fr, false); }
         record(v, good);
         if (good) return draw();
-        $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : 'Not quite. It is spelled'}</span>
+        $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : k < 0 ? 'No problem. It is spelled' : 'Not quite. It is spelled'}</span>
           <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</div>
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
@@ -2839,6 +2873,7 @@
         TTS.say(forms(v.fr).say);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
+      $('#t-idk', box).onclick = () => choose(-1);
       const keys = e => {
         if (!box.isConnected) return document.removeEventListener('keydown', keys);
         if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
@@ -2856,6 +2891,7 @@
         <div class="prompt choose-prompt${gx(v.pos)}"><div class="q-fr" lang="fr">${playBtn(forms(v.fr).say)} <b>${frHTML(v.fr)}</b></div>
           <div class="ppos"><span class="pos ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}">${esc(v.pos)}</span></div></div>
         <div class="opts">${opts.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t">${esc(o)}</span></button>`).join('')}</div>
+        <div class="skip-row"><button class="btn ghost small" id="t-idk">I don't know · next</button></div>
         <div class="drill-actions">${leave}<span class="spacer"></span><span class="kbd"><kbd>1</kbd>–<kbd>4</kbd> choose · <kbd>Enter</kbd> next</span></div>
         <div id="fb"></div></div>`;
       bindPause();
@@ -2864,10 +2900,11 @@
         if (answered) return; answered = true;
         const good = opts[k] === right, it = note(v);
         $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
+        $('#t-idk', box).disabled = true;
         if (good) XP.gain(1, 'Meaning quiz'); else { SRS.miss(it, ''); MASTER.word(v.book, v.n, v.fr, false); }
         record(v, good);
         if (good) return draw();
-        $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : 'Not quite. It means'}</span>
+        $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : k < 0 ? 'No problem. It means' : 'Not quite. It means'}</span>
           <div class="ans${gx(v.pos)}"><span lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</span> = ${esc(right)}</div>
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
@@ -2875,6 +2912,7 @@
         TTS.say(forms(v.fr).say);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
+      $('#t-idk', box).onclick = () => choose(-1);
       const keys = e => {
         if (!box.isConnected) return document.removeEventListener('keydown', keys);
         if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;

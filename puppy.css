@@ -655,3 +655,10 @@ html.cb .gx-p { --gc: #7b4fa3; }
 .cloze-en { margin: 2px 0 0 44px; font: 600 15px/1.4 var(--serif); color: var(--ink-2); letter-spacing: normal; }
 .cloze-en[hidden] { display: none; }
 .drill .cloze-en { margin: 8px 0 0; text-align: center; font-size: 16px; }
+
+/* ---------- multiple-choice review + "I don't know" ---------- */
+.skip-row { text-align: center; margin: 4px 0 14px; }
+.q-sent { font: 600 clamp(24px, 5vw, 34px)/1.35 var(--display); text-align: center; margin: 4px 0 6px; }
+.q-sent.small { font-size: clamp(19px, 4vw, 24px); font-weight: 500; margin-top: 12px; }
+.q-sent .gap { text-decoration: none; border-bottom: 3px solid var(--gold); padding: 0 .2em; color: var(--accent); }
+.choose-prompt .pmean { font-size: clamp(26px, 5.5vw, 36px); }
