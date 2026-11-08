@@ -662,3 +662,6 @@ html.cb .gx-p { --gc: #7b4fa3; }
 .q-sent.small { font-size: clamp(19px, 4vw, 24px); font-weight: 500; margin-top: 12px; }
 .q-sent .gap { text-decoration: none; border-bottom: 3px solid var(--gold); padding: 0 .2em; color: var(--accent); }
 .choose-prompt .pmean { font-size: clamp(26px, 5.5vw, 36px); }
+
+.q-ex { font: 600 clamp(18px, 4vw, 22px)/1.4 var(--serif); text-align: center; margin: 12px 0 0; }
+.choose-prompt .cloze-en { text-align: center; margin: 4px 0 0; }

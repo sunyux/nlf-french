@@ -2303,7 +2303,7 @@
   const capLike = (ref, t) => /^\p{Lu}/u.test(ref) ? t.charAt(0).toUpperCase() + t.slice(1) : t;
   const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
   // build one multiple-choice question for a mistake-book item
-  function choiceQuestion(e) {
+  function choiceQuestion(e, gapFirst = false) {
     const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
     const v = lecon && e.kind === 'word' ? lecon.vocab.find(x => x.fr === e.fr) : null;
     const info = enFill({ ...(v || {}), ...e });
@@ -2344,7 +2344,7 @@
     const exact = ex && gapSentence(ex[0], e.fr);
     q.full = exBox(info);
     q.tip = e.n ? tipBox(wordTip(e.n, info)) : '';
-    if (exact && Math.random() < 0.5) {
+    if (exact && (gapFirst || Math.random() < 0.5)) {
       const wrongs = pickDistractors(info, x => capLike(exact.word, coreFr(x.fr)));
       q.head = `<div class="q-sent" lang="fr">${gapHTML(exact.text)}</div><div class="cloze-en" lang="en">${esc(ex[2] || '')}</div><div class="ppos">Pick the missing word</div>`;
       return finish(exact.word, wrongs);
@@ -2356,30 +2356,37 @@
     return finish(e.fr, pickDistractors(info, x => x.fr));
   }
 
-  function reviewChoice(box, queue, round = 1) {
-    const practice = round > 1;
-    let i = 0, answered = false, right = 0, q = null;
+  // opts.first: the unit's First test (sentence gaps, scored like the old typed test: right = mastered, misses stay out of the mistake book until a word is missed 3 times)
+  function reviewChoice(box, queue, round = 1, opts = {}) {
+    const practice = round > 1, scored = !!opts.first && !practice;
+    let i = 0, answered = false, right = 0, q = null, saved = false, addedToBook = false;
     const wrong = [];
     const draw = () => {
       if (i >= queue.length) {
+        if (scored && !saved) {
+          saved = true;
+          const m = MASTER.get(opts.ctx.book.id, opts.ctx.lecon.n); m.test = dayStr(); MASTER.put(opts.ctx.book.id, opts.ctx.lecon.n, m);
+          opts.ctx.save('vocab', right / queue.length);
+        }
         const allRight = !wrong.length;
-        box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">${practice ? bi(`第 ${round - 1} 轮练习`, `Practice round ${round - 1}`) : 'Bilan'}</p>
+        box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">${practice ? bi(`第 ${round - 1} 轮练习`, `Practice round ${round - 1}`) : opts.first ? 'Premier test' : 'Bilan'}</p>
           <div class="score">${right} / ${queue.length}</div>
           <p>${allRight ? (practice ? bi('全部答对了！今天的错题都练会了。', 'All right! You have learned today\'s misses.') : bi('全部答对！', 'All correct!'))
             : practice ? bi(`还有 ${wrong.length} 个没选对，再来一轮。`, `${wrong.length} still wrong — one more round.`)
+            : opts.first ? 'The words you missed are not in the mistake book. Practise them now until they are right.'
             : bi('答错的明天会再出现。现在可以先把它们练对。', 'The ones you missed come back tomorrow. Practise them now until they are right.')}</p>
           ${wrong.length ? `<ul>${wrong.map(e => `<li><span lang="fr">${esc(e.fr)}</span><span class="w-zh">${e.kind === 'cloze' ? esc(e.zh) : G(enFill(e))}</span></li>`).join('')}</ul>` : ''}
           <div class="drill-actions" style="justify-content:center">
             ${wrong.length ? `<button class="btn" id="again-wrong">${bi(`练习答错的（${wrong.length}）`, `Practise the misses (${wrong.length})`)}</button>` : ''}
-            <a class="btn ${wrong.length ? 'ghost' : ''}" href="#/review">${bi('回到错题本', 'Back to mistake book')}</a>${slipBtn('slip')}</div></div>`;
+            <a class="btn ${wrong.length ? 'ghost' : ''}" href="${opts.back || '#/review'}">${opts.first ? 'Back to the unit' : bi('回到错题本', 'Back to mistake book')}</a>${slipBtn('slip')}</div></div>`;
         $('#slip', box).onclick = () => printSlip(practice ? bi(`错题练习 · 第 ${round - 1} 轮`, `PRATIQUE · TOUR ${round - 1}`) : bi('今日复习', 'RÉVISION DU JOUR'),
           [pad(bi('题数', 'Questions'), queue.length), pad(bi('答对', 'Justes'), right), pad(bi('今日分数', 'Points'), XP.today().xp), pad(bi('连续天数', 'Série'), XP.streak()),
             ...(wrong.length ? ['', bi('要再看看：', 'À revoir :'), ...wrong.slice(0, 12).map(e => '  ' + e.fr.slice(0, 26))] : ['', bi('全部答对！', 'Sans faute !')])]);
-        if (wrong.length) $('#again-wrong', box).onclick = () => reviewChoice(box, shuffle(wrong), round + 1);
+        if (wrong.length) $('#again-wrong', box).onclick = () => reviewChoice(box, shuffle(wrong), round + 1, opts);
         return;
       }
       toDrill(box);
-      const e = queue[i]; answered = false; q = choiceQuestion(e);
+      const e = queue[i]; answered = false; q = choiceQuestion(e, !!opts.first);
       box.innerHTML = `<div class="drill">
         <div class="count">${practice ? bi(`练习 ${round - 1} · `, `Practice ${round - 1} · `) : ''}${i + 1} / ${queue.length} · ${leconName(e.n)}</div>
         <div class="bar"><i style="width:${i / queue.length * 100}%"></i></div>
@@ -2397,12 +2404,19 @@
       $('#idk', box).disabled = true;
       if (good) {
         right++;
-        if (practice) XP.gain(1, bi('练习答对', 'Practice right')); else { SRS.hit(e); XP.gain(3, '复习答对'); }
+        if (practice) XP.gain(1, bi('练习答对', 'Practice right'));
+        else if (scored) { XP.gain(2, 'First test'); if (inReview(e.book, e.n, e.fr)) SRS.hit(e); else MASTER.word(e.book, e.n, e.fr); }
+        else { SRS.hit(e); XP.gain(3, '复习答对'); }
         i++; draw(); return;   // right: straight to the next one
       }
       wrong.push(e);
-      if (!practice) SRS.miss(e, k >= 0 ? q.options[k] : '');
-      $('#fb', box).innerHTML = `<div class="feedback bad"><span class="lab">${k < 0 ? bi('没关系，答案是', 'No problem — the answer is') : bi('不对，答案是', 'Not quite — the answer is')}${practice ? '' : ' · ' + bi('明天再来一次', 'back tomorrow')}</span>
+      addedToBook = false;
+      if (scored) {
+        const tk = `testmiss:${e.book}:${e.n}`, tm = store.get(tk, {});
+        tm[e.fr] = (tm[e.fr] || 0) + 1; store.set(tk, tm);
+        if (tm[e.fr] >= 3 && !inReview(e.book, e.n, e.fr)) { SRS.miss(e, k >= 0 ? q.options[k] : ''); addedToBook = true; }
+      } else if (!practice) SRS.miss(e, k >= 0 ? q.options[k] : '');
+      $('#fb', box).innerHTML = `<div class="feedback bad"><span class="lab">${k < 0 ? bi('没关系，答案是', 'No problem — the answer is') : bi('不对，答案是', 'Not quite — the answer is')}${practice ? '' : scored ? (addedToBook ? ' · added to the mistake book' : '') : ' · ' + bi('明天再来一次', 'back tomorrow')}</span>
         <div class="ans${gx(e.pos)}" lang="fr">${playBtn(q.say)} ${esc(q.right)}</div>
         ${q.tip || ''}${q.full}
         <div class="toolbar"><button class="btn small" id="t-next">${i + 1 >= queue.length ? bi('看结果', 'See the result') : bi('下一个', 'Next') + ' ›'}</button></div></div>`;
@@ -2677,11 +2691,12 @@
       if (mode === 'test') {
         const st = MASTER.stats(ctx.book.id, lecon);
         box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">Premier test</p>
-          <h2 style="font-size:30px;margin-bottom:10px">本课词汇首测</h2>
-          <p class="hint-text" style="margin:0 0 18px">把这一课 ${lecon.vocab.length} 个词全部默写一遍，不能用提示。<br>写对的直接算掌握，以后不用再复习；写错的<b>不进错题本</b>，之后在「默写」里练，第一次就写对也算掌握。同一个词在首测里累计错满 3 次，会自动加入错题本。</p>
-          ${st.test ? `<p class="kbd">上次首测：${st.test}</p>` : ''}
-          <button class="btn" id="go">${st.test ? '再测一次' : '开始首测'}</button></div>`;
-        $('#go', box).onclick = () => wordDrill(ctx, box, 'test', lecon.vocab);
+          <h2 style="font-size:30px;margin-bottom:10px">First test</h2>
+          <p class="hint-text" style="margin:0 0 18px">All ${lecon.vocab.length} words of this unit, one at a time: a French sentence with a gap, and you pick the missing word. No typing.<br>A right answer counts as mastered, so you do not need to review it again. A wrong answer does <b>not</b> go into the mistake book (practise those afterwards); a word missed 3 times in first tests is added.</p>
+          ${st.test ? `<p class="kbd">Last first test: ${st.test}</p>` : ''}
+          <button class="btn" id="go">${st.test ? 'Test again' : 'Start the first test'}</button></div>`;
+        $('#go', box).onclick = () => reviewChoice(box, shuffle(lecon.vocab.map(v => ({ ...v, kind: 'word', book: ctx.book.id, n: lecon.n }))), 1,
+          { first: true, ctx, back: `#/${ctx.book.id}/${lecon.n}/vocab` });
       } else {
         const m = MASTER.get(ctx.book.id, lecon.n);
         const onlyNew = store.get('vonlynew', true);
@@ -2723,6 +2738,8 @@
       <h2 class="test-title">${esc(cfg.title)} · ${info.title}</h2>
       <p class="hint-text">${info.sub} ${cfg.items.length.toLocaleString('en')} words.${saved ? `<br>You stopped at word <b>${saved.i + 1}</b> of ${saved.order.length} (${right} of ${answered} right so far). Your place is saved.` : '<br>You can stop at any time and carry on later.'}</p>
       ${last ? `<p class="kbd">Last time: ${last.score}% · ${last.date}</p>` : ''}
+      ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-mqex" ${store.get('mqex', true) ? 'checked' : ''}> Show an example sentence under each word</label>
+      <label class="kbd tricky-opt"><input type="checkbox" id="t-mqen" ${store.get('mqen', true) ? 'checked' : ''}> ...with its English translation under it</label>` : ''}
       ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-tricky" ${store.get('tricky', true) ? 'checked' : ''}> Tricky choices: wrong answers are similar words (same type, same unit, similar spelling)</label>` : ''}
       <label class="kbd tricky-opt"><input type="checkbox" id="t-auto" ${store.get('vauto', false) ? 'checked' : ''}> Say each word out loud automatically</label>
       <div class="toolbar" style="justify-content:center">
@@ -2731,6 +2748,8 @@
       </div></div>`;
     const fresh = () => ({ order: shuffle(cfg.items).map(wkey), i: 0, ok: [], bad: [], date: dayStr() });
     const tk = $('#t-tricky', box); if (tk) tk.onchange = () => store.set('tricky', tk.checked);
+    const mx = $('#t-mqex', box); if (mx) mx.onchange = () => store.set('mqex', mx.checked);
+    const mn = $('#t-mqen', box); if (mn) mn.onchange = () => store.set('mqen', mn.checked);
     $('#t-go', box).onclick = () => testRun(box, cfg, saved || fresh());
     const n = $('#t-new', box); if (n) n.onclick = () => testRun(box, cfg, fresh());
     const au = $('#t-auto', box); if (au) au.onchange = () => store.set('vauto', au.checked);
@@ -2761,6 +2780,12 @@
     const draw = () => (toDrill(box), offKeys && offKeys(), offKeys = null, st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
     const record = (v, good) => { (good ? st.ok : st.bad).push(wkey(v)); st.i++; save(); };
     const after = v => `${tipBox(wordTip(v.n, v))}${exBox(v)}`;
+    // Meaning quiz: the French example sentence (and its English translation) sit under the word while you answer
+    const exQ = v => {
+      if (!store.get('mqex', true) || !v.ex || !v.ex[0]) return '';
+      const en = store.get('mqen', true) && v.ex[2] ? `<div class="cloze-en" lang="en">${esc(v.ex[2])}</div>` : '';
+      return `<div class="q-ex" lang="fr">${playBtn(v.ex[0])} ${esc(v.ex[0])}</div>${en}`;
+    };
 
     function drawWrite(v) {
       let answered = false;
@@ -2906,7 +2931,7 @@
       let answered = false;
       box.innerHTML = `<div class="drill">${head()}
         <div class="prompt choose-prompt${gx(v.pos)}"><div class="q-fr" lang="fr">${playBtn(forms(v.fr).say)} <b>${frHTML(v.fr)}</b></div>
-          <div class="ppos"><span class="pos ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}">${esc(v.pos)}</span></div></div>
+          <div class="ppos"><span class="pos ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}">${esc(v.pos)}</span></div>${exQ(v)}</div>
         <div class="opts">${opts.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t">${esc(o)}</span></button>`).join('')}</div>
         <div class="skip-row"><button class="btn ghost small" id="t-idk">I don't know · next</button></div>
         <div class="drill-actions">${leave}<span class="spacer"></span><span class="kbd"><kbd>1</kbd>–<kbd>4</kbd> choose · <kbd>Enter</kbd> next</span></div>
