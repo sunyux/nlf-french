@@ -665,3 +665,13 @@ html.cb .gx-p { --gc: #7b4fa3; }
 
 .q-ex { font: 600 clamp(18px, 4vw, 22px)/1.4 var(--serif); text-align: center; margin: 12px 0 0; }
 .choose-prompt .cloze-en { text-align: center; margin: 4px 0 0; }
+
+/* ---------- bigger answers, small example, in-place right answer ---------- */
+.opts:not(.spell-opts) .opt { font-size: 22px; padding: 16px 18px; }
+.opts .opt .opt-t { line-height: 1.25; }
+.q-ex { font-size: clamp(14px, 3.4vw, 16px); font-weight: 500; color: var(--ink-2); margin: 8px 0 0; }
+.q-ex .play { transform: scale(.8); }
+.opt:disabled { pointer-events: none; }   /* so a tap on the lit-up options still moves on */
+.tap-next { text-align: center; margin: 10px 0 4px; font: 600 16px var(--display); color: var(--accent); }
+/* the gap in a sentence: a soft rounded box */
+.q-sent .gap { display: inline-block; min-width: 3.4em; height: 1.35em; vertical-align: middle; margin: 0 .15em; background: var(--paper-2); border: 0; border-radius: 12px; color: transparent; overflow: hidden; }

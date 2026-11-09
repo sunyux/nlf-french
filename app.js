@@ -165,8 +165,8 @@
     key: (book, n) => `master:${book}:${n}`,
     get(book, n) { return store.get(this.key(book, n), { w: {}, t: {}, test: '' }); },
     put(book, n, m) { store.set(this.key(book, n), m); },
-    word(book, n, fr, on = true) { const m = this.get(book, n), was = !!m.w[fr]; on ? (m.w[fr] = m.w[fr] || dayStr()) : delete m.w[fr]; this.put(book, n, m); if (on && !was) { XP.gain(3, '新掌握 ' + fr); checkStamps(book, n); } },
-    line(book, n, k) { const m = this.get(book, n), was = !!m.t[k]; m.t[k] = m.t[k] || dayStr(); this.put(book, n, m); if (!was) { XP.gain(3, '课文掌握一行'); checkStamps(book, n); } },
+    word(book, n, fr, on = true) { const m = this.get(book, n), was = !!m.w[fr]; on ? (m.w[fr] = m.w[fr] || dayStr()) : delete m.w[fr]; this.put(book, n, m); if (on && !was) { XP.gain(3, '新掌握 ' + fr); checkStamps(book, n); } refreshProg(book, n); },
+    line(book, n, k) { const m = this.get(book, n), was = !!m.t[k]; m.t[k] = m.t[k] || dayStr(); this.put(book, n, m); if (!was) { XP.gain(3, '课文掌握一行'); checkStamps(book, n); } refreshProg(book, n); },
     stats(book, lecon) {
       const m = this.get(book, lecon.n);
       const words = lecon.vocab.filter(v => m.w[v.fr]).length;
@@ -1798,6 +1798,18 @@
   };
   // phones: a wrong answer never moves the page; the next question starts at the top of the exercise
   const HEADER_GAP = () => (innerWidth < 700 ? 150 : 90);
+  const TAP_HINT = '<p class="tap-next">Tap anywhere to continue</p>';
+  // after a wrong answer the right option lights up in place; a tap anywhere on the screen goes on
+  function tapToContinue(next) {
+    let dead = false;
+    const go = e => {
+      if (e.target.closest('.play, [data-say], a, button:not(.opt)')) return;
+      off(); next();
+    };
+    const off = () => { dead = true; document.removeEventListener('click', go, true); };
+    setTimeout(() => { if (!dead) document.addEventListener('click', go, true); }, 300);
+    return off;
+  }
   function toDrill(box) {
     if (!box || !box.isConnected) return;
     const top = box.getBoundingClientRect().top;
@@ -2294,7 +2306,9 @@
   const capLike = (ref, t) => /^\p{Lu}/u.test(ref) ? t.charAt(0).toUpperCase() + t.slice(1) : t;
   const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
   // build one multiple-choice question for a mistake-book item
-  function choiceQuestion(e, gapFirst = false) {
+  // mode '' = mistake book (meaning + gapped example, or gapped example + translation); 'first' = the unit's First test
+  // (French word -> English meaning with a small example, or the gapped example + translation)
+  function choiceQuestion(e, mode = '') {
     const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
     const v = lecon && e.kind === 'word' ? lecon.vocab.find(x => x.fr === e.fr) : null;
     const info = enFill({ ...(v || {}), ...e });
@@ -2335,10 +2349,18 @@
     const exact = ex && gapSentence(ex[0], e.fr);
     q.full = exBox(info);
     q.tip = e.n ? tipBox(wordTip(e.n, info)) : '';
-    if (exact && (gapFirst || Math.random() < 0.5)) {
+    if (exact && Math.random() < 0.5) {
       const wrongs = pickDistractors(info, x => capLike(exact.word, coreFr(x.fr)));
       q.head = `<div class="q-sent" lang="fr">${gapHTML(exact.text)}</div><div class="cloze-en" lang="en">${esc(ex[2] || '')}</div><div class="ppos">Pick the missing word</div>`;
       return finish(exact.word, wrongs);
+    }
+    const meaning = info.en || Gt(info);
+    if (mode === 'first' && meaning) {
+      q.lang = 'en';
+      q.head = `<div class="q-fr" lang="fr">${playBtn(q.say)} <b>${esc(e.fr)}</b></div>
+        <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
+        ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
+      return finish(meaning, pickDistractors(info, x => x.en || ''));
     }
     const gap = ex && (exact || gapSentence(ex[0], e.fr, true));
     q.head = `<div class="pmean ${gx(info.pos)}">${MEAN(info)}</div>
@@ -2350,7 +2372,7 @@
   // opts.first: the unit's First test (sentence gaps, scored like the old typed test: right = mastered, misses stay out of the mistake book until a word is missed 3 times)
   function reviewChoice(box, queue, round = 1, opts = {}) {
     const practice = round > 1, scored = !!opts.first && !practice;
-    let i = 0, answered = false, right = 0, q = null, saved = false, addedToBook = false;
+    let i = 0, answered = false, right = 0, q = null, saved = false, addedToBook = false, offTap = null;
     const wrong = [];
     const draw = () => {
       if (i >= queue.length) {
@@ -2377,12 +2399,13 @@
         return;
       }
       toDrill(box);
-      const e = queue[i]; answered = false; q = choiceQuestion(e, !!opts.first);
+      offTap && offTap(); offTap = null;
+      const e = queue[i]; answered = false; q = choiceQuestion(e, opts.first ? 'first' : '');
       box.innerHTML = `<div class="drill">
         <div class="count">${practice ? bi(`练习 ${round - 1} · `, `Practice ${round - 1} · `) : ''}${i + 1} / ${queue.length} · ${leconName(e.n)}</div>
         <div class="bar"><i style="width:${i / queue.length * 100}%"></i></div>
         <div class="prompt choose-prompt">${q.head}</div>
-        <div class="opts">${q.options.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t" lang="fr">${esc(o)}</span></button>`).join('')}</div>
+        <div class="opts">${q.options.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t" lang="${q.lang || 'fr'}">${esc(o)}</span></button>`).join('')}</div>
         <div class="skip-row"><button class="btn ghost small" id="idk">${bi('不会，下一个', "I don't know · next")}</button></div>
         <div id="fb"></div></div>`;
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
@@ -2407,12 +2430,9 @@
         tm[e.fr] = (tm[e.fr] || 0) + 1; store.set(tk, tm);
         if (tm[e.fr] >= 3 && !inReview(e.book, e.n, e.fr)) { SRS.miss(e, k >= 0 ? q.options[k] : ''); addedToBook = true; }
       } else if (!practice) SRS.miss(e, k >= 0 ? q.options[k] : '');
-      $('#fb', box).innerHTML = `<div class="feedback bad"><span class="lab">${k < 0 ? bi('没关系，答案是', 'No problem — the answer is') : bi('不对，答案是', 'Not quite — the answer is')}${practice ? '' : scored ? (addedToBook ? ' · added to the mistake book' : '') : ' · ' + bi('明天再来一次', 'back tomorrow')}</span>
-        <div class="ans${gx(e.pos)}" lang="fr">${playBtn(q.say)} ${esc(q.right)}</div>
-        ${q.tip || ''}${q.full}
-        <div class="toolbar"><button class="btn small" id="t-next">${i + 1 >= queue.length ? bi('看结果', 'See the result') : bi('下一个', 'Next') + ' ›'}</button></div></div>`;
+      $('#fb', box).innerHTML = TAP_HINT;   // the right answer is lit up above; a tap anywhere goes on
+      offTap = tapToContinue(() => { i++; draw(); });
       TTS.say(q.say);
-      const nb = $('#t-next', box); nb.focus({ preventScroll: true }); nb.onclick = () => { i++; draw(); };
     };
     const keys = ev => {
       if (!box.isConnected) return document.removeEventListener('keydown', keys);
@@ -2500,11 +2520,17 @@
       </section>`;
   }
 
+  // redraw the unit's progress bar(s) on screen right after a word is mastered, so it moves while you practise
+  function refreshProg(bookId, n) {
+    const book = findBook(bookId), f = book && findLecon(book, n);
+    if (!f) return;
+    $$('.prog[data-book]').forEach(el => { if (el.dataset.book === bookId && +el.dataset.n === n) el.outerHTML = progHTML(book, f.lecon, el.classList.contains('big')); });
+  }
   function progHTML(book, l, big = false) {
     const st = MASTER.stats(book.id, l);
     const bar = (label, a, b, done) => `<div class="pbar ${done ? 'done' : ''}"><span class="pl">${label}</span>
       <span class="pt"><i style="width:${b ? a / b * 100 : 0}%"></i></span><span class="pn">${done ? '通过' : `${a}/${b}`}</span></div>`;
-    return `<div class="prog ${big ? 'big' : ''}">${bar('词汇', st.words, st.totalWords, st.vocabDone)}${book.flat ? '' : bar('课文', st.lines, st.totalLines, st.textDone)}</div>`;
+    return `<div class="prog ${big ? 'big' : ''}" data-book="${book.id}" data-n="${l.n}">${bar('词汇', st.words, st.totalWords, st.vocabDone)}${book.flat ? '' : bar('课文', st.lines, st.totalLines, st.textDone)}</div>`;
   }
 
   function viewBook(book) {
@@ -2628,9 +2654,10 @@
   /* ----- 1 · vocabulary ----- */
   function paneVocab(ctx, mode = store.get('vmode', 'list')) {
     if (mode === 'listen') { mode = 'write'; store.set('vauto', true); }
+    if (mode === 'choose') mode = 'test';   // the Meaning quiz now lives inside the First test
     const { lecon, pane } = ctx;
     store.set('vmode', mode);
-    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['test', bi('首测', 'First test')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['choose', bi('选意思', 'Meaning quiz')], ['spell', bi('选拼写', 'Spelling quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
+    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['test', bi('首测', 'First test')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['spell', bi('选拼写', 'Spelling quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
     if (mode === 'list') {
       const groups = [];
       orderedVocab(ctx.book.id, lecon).forEach(v => { let g = groups.find(x => x.g === v.g); if (!g) groups.push(g = { g: v.g, items: [] }); g.items.push(v); });
@@ -2666,9 +2693,9 @@
         const prevC = cleanup; cleanup = () => { stopper && stopper(); prevC && prevC(); };
       };
     } else {
-      if (mode === 'full' || mode === 'choose' || mode === 'spell') {
+      if (mode === 'full' || mode === 'spell') {
         pane.innerHTML = head + '<div id="drill"></div>'; bindModes(pane, m => paneVocab(ctx, m));
-        const b = ctx.book, kind = mode === 'full' ? 'write' : mode === 'spell' ? 'spell' : 'choose';
+        const b = ctx.book, kind = mode === 'full' ? 'write' : 'spell';
         return testIntro($('#drill', pane), { id: `${b.id}:${lecon.n}:${kind}`, kind, title: `Unité ${lecon.n % 100} · ${lecon.title}`, items: testItems(b, [lecon]), pool: testItems(b, b.units.flatMap(u => u.lecons)), back: `#/${b.id}/${lecon.n}/vocab` });
       }
       if (mode === 'conj') { pane.innerHTML = head + '<div id="drill"></div>'; bindModes(pane, m => paneVocab(ctx, m)); return conjPane(ctx, $('#drill', pane)); }
@@ -2683,7 +2710,7 @@
         const st = MASTER.stats(ctx.book.id, lecon);
         box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">Premier test</p>
           <h2 style="font-size:30px;margin-bottom:10px">First test</h2>
-          <p class="hint-text" style="margin:0 0 18px">All ${lecon.vocab.length} words of this unit, one at a time: a French sentence with a gap, and you pick the missing word. No typing.<br>A right answer counts as mastered, so you do not need to review it again. A wrong answer does <b>not</b> go into the mistake book (practise those afterwards); a word missed 3 times in first tests is added.</p>
+          <p class="hint-text" style="margin:0 0 18px">All ${lecon.vocab.length} words of this unit, one at a time, no typing. Some questions show a French word and you pick its English meaning; others show a French sentence with a gap and you pick the missing word.<br>A right answer counts as mastered, so you do not need to review it again. A wrong answer does <b>not</b> go into the mistake book (practise those afterwards); a word missed 3 times in first tests is added.</p>
           ${st.test ? `<p class="kbd">Last first test: ${st.test}</p>` : ''}
           <button class="btn" id="go">${st.test ? 'Test again' : 'Start the first test'}</button></div>`;
         $('#go', box).onclick = () => reviewChoice(box, shuffle(lecon.vocab.map(v => ({ ...v, kind: 'word', book: ctx.book.id, n: lecon.n }))), 1,
@@ -2729,8 +2756,7 @@
       <h2 class="test-title">${esc(cfg.title)} · ${info.title}</h2>
       <p class="hint-text">${info.sub} ${cfg.items.length.toLocaleString('en')} words.${saved ? `<br>You stopped at word <b>${saved.i + 1}</b> of ${saved.order.length} (${right} of ${answered} right so far). Your place is saved.` : '<br>You can stop at any time and carry on later.'}</p>
       ${last ? `<p class="kbd">Last time: ${last.score}% · ${last.date}</p>` : ''}
-      ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-mqex" ${store.get('mqex', true) ? 'checked' : ''}> Show an example sentence under each word</label>
-      <label class="kbd tricky-opt"><input type="checkbox" id="t-mqen" ${store.get('mqen', true) ? 'checked' : ''}> ...with its English translation under it</label>` : ''}
+      ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-mqex" ${store.get('mqex', true) ? 'checked' : ''}> Show a small example sentence under each word</label>` : ''}
       ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-tricky" ${store.get('tricky', true) ? 'checked' : ''}> Tricky choices: wrong answers are similar words (same type, same unit, similar spelling)</label>` : ''}
       <label class="kbd tricky-opt"><input type="checkbox" id="t-auto" ${store.get('vauto', false) ? 'checked' : ''}> Say each word out loud automatically</label>
       <div class="toolbar" style="justify-content:center">
@@ -2740,7 +2766,6 @@
     const fresh = () => ({ order: shuffle(cfg.items).map(wkey), i: 0, ok: [], bad: [], date: dayStr() });
     const tk = $('#t-tricky', box); if (tk) tk.onchange = () => store.set('tricky', tk.checked);
     const mx = $('#t-mqex', box); if (mx) mx.onchange = () => store.set('mqex', mx.checked);
-    const mn = $('#t-mqen', box); if (mn) mn.onchange = () => store.set('mqen', mn.checked);
     $('#t-go', box).onclick = () => testRun(box, cfg, saved || fresh());
     const n = $('#t-new', box); if (n) n.onclick = () => testRun(box, cfg, fresh());
     const au = $('#t-auto', box); if (au) au.onchange = () => store.set('vauto', au.checked);
@@ -2767,16 +2792,12 @@
       const it = { book: v.book, n: v.n, kind: 'word', fr: v.fr, zh: v.zh, en: v.en, pos: v.pos, tip: v.tip, tipEn: v.tipEn, ex: v.ex, g: v.g };
       return it;
     };
-    let offKeys = null;   // the previous question's keyboard listener must not outlive it
-    const draw = () => (toDrill(box), offKeys && offKeys(), offKeys = null, st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
+    let offKeys = null, offTap = null;   // the previous question's keyboard / tap listeners must not outlive it
+    const draw = () => (toDrill(box), offKeys && offKeys(), offKeys = null, offTap && offTap(), offTap = null, st.i >= total ? finish() : cfg.kind === 'write' ? drawWrite(map.get(st.order[st.i])) : cfg.kind === 'spell' ? drawSpell(map.get(st.order[st.i])) : drawChoose(map.get(st.order[st.i])));
     const record = (v, good) => { (good ? st.ok : st.bad).push(wkey(v)); st.i++; save(); };
     const after = v => `${tipBox(wordTip(v.n, v))}${exBox(v)}`;
     // Meaning quiz: the French example sentence (and its English translation) sit under the word while you answer
-    const exQ = v => {
-      if (!store.get('mqex', true) || !v.ex || !v.ex[0]) return '';
-      const en = store.get('mqen', true) && v.ex[2] ? `<div class="cloze-en" lang="en">${esc(v.ex[2])}</div>` : '';
-      return `<div class="q-ex" lang="fr">${playBtn(v.ex[0])} ${esc(v.ex[0])}</div>${en}`;
-    };
+    const exQ = v => (!store.get('mqex', true) || !v.ex || !v.ex[0] ? '' : `<div class="q-ex" lang="fr">${playBtn(v.ex[0])} ${esc(v.ex[0])}</div>`);
 
     function drawWrite(v) {
       let answered = false;
@@ -2895,14 +2916,12 @@
         const good = opts[k] === right, it = note(v);
         $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
         $('#t-idk', box).disabled = true;
-        if (good) { XP.gain(1, 'Spelling quiz'); if (cfg.mine && inReview(v.book, v.n, v.fr)) SRS.hit(it); } else { SRS.miss(it, opts[k]); MASTER.word(v.book, v.n, v.fr, false); }
+        if (good) { XP.gain(1, 'Spelling quiz'); if (inReview(v.book, v.n, v.fr)) { if (cfg.mine) SRS.hit(it); } else MASTER.word(v.book, v.n, v.fr); }
+        else { SRS.miss(it, opts[k]); MASTER.word(v.book, v.n, v.fr, false); }
         record(v, good);
         if (good) return draw();
-        $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : k < 0 ? 'No problem. It is spelled' : 'Not quite. It is spelled'}</span>
-          <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</div>
-          ${after(v)}
-          <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
-        const nb = $('#t-next', box); nb.focus({ preventScroll: true }); nb.onclick = draw;
+        $('#fb', box).innerHTML = TAP_HINT;
+        offTap = tapToContinue(draw);
         TTS.say(forms(v.fr).say);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
@@ -2934,14 +2953,12 @@
         const good = opts[k] === right, it = note(v);
         $$('.opt', box).forEach((b, j) => { b.disabled = true; b.classList.toggle('right', opts[j] === right); b.classList.toggle('wrong', j === k && !good); });
         $('#t-idk', box).disabled = true;
-        if (good) XP.gain(1, 'Meaning quiz'); else { SRS.miss(it, ''); MASTER.word(v.book, v.n, v.fr, false); }
+        if (good) { XP.gain(1, 'Meaning quiz'); if (inReview(v.book, v.n, v.fr)) SRS.hit(it); else MASTER.word(v.book, v.n, v.fr); }
+        else { SRS.miss(it, ''); MASTER.word(v.book, v.n, v.fr, false); }
         record(v, good);
         if (good) return draw();
-        $('#fb', box).innerHTML = `<div class="feedback ${good ? 'ok' : 'bad'}"><span class="lab">${good ? 'Yes!' : k < 0 ? 'No problem. It means' : 'Not quite. It means'}</span>
-          <div class="ans${gx(v.pos)}"><span lang="fr">${playBtn(forms(v.fr).say)} ${frHTML(v.fr)}</span> = ${esc(right)}</div>
-          ${exBox(v)}${tipBox(wordTip(v.n, v))}
-          <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
-        const nb = $('#t-next', box); nb.focus({ preventScroll: true }); nb.onclick = draw;
+        $('#fb', box).innerHTML = TAP_HINT;   // the right answer is lit up above; a tap goes on
+        offTap = tapToContinue(draw);
         TTS.say(forms(v.fr).say);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
