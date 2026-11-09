@@ -2155,6 +2155,8 @@
         <div><b>${active.length}</b><span>还在复习</span></div>
         <div><b>${done.length}</b><span>已掌握</span></div>
       </div>
+      <p class="kbd" style="margin:14px 0 6px">${bi('选择题类型', 'Question type')}</p>
+      ${modeBar([['mix', bi('混合', 'Mixed')], ['meaning', bi('选意思', 'Meaning quiz')], ['sentence', bi('选句子里的词', 'Sentence quiz')]], store.get('rvmode', 'mix'))}
       <div class="toolbar">
         ${due.length ? `<a class="btn ghost" href="#/review/learn">${bi('先学一遍', 'Study first')}</a><a class="btn" href="#/review/go">开始今天的复习（${due.length}）</a>`
           : `<span class="btn ghost" aria-disabled="true">今天没有要复习的</span>`}
@@ -2174,6 +2176,7 @@
           <button class="err-del" data-id="${esc(e.id)}" title="移出错题本" aria-label="移出错题本">×</button>
         </div>`).join('')}</section>`).join('')
         : pupImg('sleep', 'empty-pup') + '<p class="notice">错题本还是空的。去做几课练习吧，写错的会自动出现在这里。</p>'}`;
+    bindModes(main, m => { store.set('rvmode', m); viewReview(); });
     $$('.err-del', main).forEach(b => b.onclick = () => { SRS.remove(b.dataset.id); viewReview(); });
     $('#exp', main).onclick = () => BACKUP.download();
     $('#imp', main).onchange = async e => {
@@ -2319,8 +2322,9 @@
   const capLike = (ref, t) => /^\p{Lu}/u.test(ref) ? t.charAt(0).toUpperCase() + t.slice(1) : t;
   const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
   // build one multiple-choice question for a mistake-book item
-  // mode '' = mistake book (meaning + gapped example, or gapped example + translation);
-  // 'first' = the unit's Sentence quiz: always the gapped example + its translation when the word is in its example
+  // mode '' = mixed (meaning + gapped example, or gapped example + translation);
+  // 'meaning' = French word -> pick the English meaning (small example under it);
+  // 'sentence' / 'first' = the gapped example + its translation when the word is in its example ('first' is the unit's Sentence quiz)
   function choiceQuestion(e, mode = '') {
     const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
     const v = lecon && e.kind === 'word' ? lecon.vocab.find(x => x.fr === e.fr) : null;
@@ -2362,10 +2366,18 @@
     const exact = ex && gapSentence(ex[0], e.fr);
     q.full = exBox(info);
     q.tip = e.n ? tipBox(wordTip(e.n, info)) : '';
-    if (exact && (mode === 'first' || Math.random() < 0.5)) {
+    if (exact && (mode === 'first' || mode === 'sentence' || (mode !== 'meaning' && Math.random() < 0.5))) {
       const wrongs = pickDistractors(info, x => capLike(exact.word, coreFr(x.fr)));
       q.head = `<div class="q-sent" lang="fr">${gapHTML(exact.text)}</div><div class="cloze-en" lang="en">${esc(ex[2] || '')}</div><div class="ppos">Pick the missing word</div>`;
       return finish(exact.word, wrongs);
+    }
+    const meaning = info.en || Gt(info);
+    if (mode === 'meaning' && meaning) {
+      q.lang = 'en';
+      q.head = `<div class="q-fr" lang="fr">${playBtn(q.say)} <b>${esc(e.fr)}</b></div>
+        <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
+        ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
+      return finish(meaning, pickDistractors(info, x => x.en || ''));
     }
     const gap = ex && (exact || gapSentence(ex[0], e.fr, true));
     q.head = `<div class="pmean ${gx(info.pos)}">${MEAN(info)}</div>
@@ -2405,7 +2417,7 @@
       }
       toDrill(box);
       offTap && offTap(); offTap = null;
-      const e = queue[i]; answered = false; q = choiceQuestion(e, opts.first ? 'first' : '');
+      const e = queue[i]; answered = false; q = choiceQuestion(e, opts.first ? 'first' : store.get('rvmode', 'mix') === 'mix' ? '' : store.get('rvmode', 'mix'));
       box.innerHTML = `<div class="drill">
         <div class="count">${practice ? bi(`练习 ${round - 1} · `, `Practice ${round - 1} · `) : ''}${i + 1} / ${queue.length} · ${leconName(e.n)}</div>
         <div class="bar"><i style="width:${i / queue.length * 100}%"></i></div>
