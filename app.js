@@ -2086,6 +2086,19 @@
     viewLecon(book, found.unit, found.lecon, parts[2] || 'vocab');
   }
   window.addEventListener('hashchange', route);
+  // the top menu slides away while you scroll down and comes back as soon as you scroll up (or are at the top)
+  {
+    const bar = $('.top'); let lastY = scrollY, tick = false;
+    const sync = () => {
+      tick = false;
+      const y = Math.max(0, scrollY), dy = y - lastY;
+      if (y < 70 || dy < -6) bar.classList.remove('away');
+      else if (dy > 6 && $('#settings').hidden) bar.classList.add('away');
+      if (Math.abs(dy) > 6 || y < 70) lastY = y;
+    };
+    window.addEventListener('scroll', () => { if (!tick) { tick = true; requestAnimationFrame(sync); } }, { passive: true });
+    window.addEventListener('hashchange', () => bar.classList.remove('away'));
+  }
 
   /* ---------- views ---------- */
   function reviewBanner() {
@@ -2306,8 +2319,8 @@
   const capLike = (ref, t) => /^\p{Lu}/u.test(ref) ? t.charAt(0).toUpperCase() + t.slice(1) : t;
   const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
   // build one multiple-choice question for a mistake-book item
-  // mode '' = mistake book (meaning + gapped example, or gapped example + translation); 'first' = the unit's First test
-  // (French word -> English meaning with a small example, or the gapped example + translation)
+  // mode '' = mistake book (meaning + gapped example, or gapped example + translation);
+  // 'first' = the unit's First test: always the gapped example + its translation when the word is in its example
   function choiceQuestion(e, mode = '') {
     const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
     const v = lecon && e.kind === 'word' ? lecon.vocab.find(x => x.fr === e.fr) : null;
@@ -2349,18 +2362,10 @@
     const exact = ex && gapSentence(ex[0], e.fr);
     q.full = exBox(info);
     q.tip = e.n ? tipBox(wordTip(e.n, info)) : '';
-    if (exact && Math.random() < 0.5) {
+    if (exact && (mode === 'first' || Math.random() < 0.5)) {
       const wrongs = pickDistractors(info, x => capLike(exact.word, coreFr(x.fr)));
       q.head = `<div class="q-sent" lang="fr">${gapHTML(exact.text)}</div><div class="cloze-en" lang="en">${esc(ex[2] || '')}</div><div class="ppos">Pick the missing word</div>`;
       return finish(exact.word, wrongs);
-    }
-    const meaning = info.en || Gt(info);
-    if (mode === 'first' && meaning) {
-      q.lang = 'en';
-      q.head = `<div class="q-fr" lang="fr">${playBtn(q.say)} <b>${esc(e.fr)}</b></div>
-        <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
-        ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
-      return finish(meaning, pickDistractors(info, x => x.en || ''));
     }
     const gap = ex && (exact || gapSentence(ex[0], e.fr, true));
     q.head = `<div class="pmean ${gx(info.pos)}">${MEAN(info)}</div>
@@ -2654,10 +2659,9 @@
   /* ----- 1 · vocabulary ----- */
   function paneVocab(ctx, mode = store.get('vmode', 'list')) {
     if (mode === 'listen') { mode = 'write'; store.set('vauto', true); }
-    if (mode === 'choose') mode = 'test';   // the Meaning quiz now lives inside the First test
     const { lecon, pane } = ctx;
     store.set('vmode', mode);
-    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['test', bi('首测', 'First test')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['spell', bi('选拼写', 'Spelling quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
+    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['test', bi('首测', 'First test')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['choose', bi('选意思', 'Meaning quiz')], ['spell', bi('选拼写', 'Spelling quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
     if (mode === 'list') {
       const groups = [];
       orderedVocab(ctx.book.id, lecon).forEach(v => { let g = groups.find(x => x.g === v.g); if (!g) groups.push(g = { g: v.g, items: [] }); g.items.push(v); });
@@ -2693,9 +2697,9 @@
         const prevC = cleanup; cleanup = () => { stopper && stopper(); prevC && prevC(); };
       };
     } else {
-      if (mode === 'full' || mode === 'spell') {
+      if (mode === 'full' || mode === 'choose' || mode === 'spell') {
         pane.innerHTML = head + '<div id="drill"></div>'; bindModes(pane, m => paneVocab(ctx, m));
-        const b = ctx.book, kind = mode === 'full' ? 'write' : 'spell';
+        const b = ctx.book, kind = mode === 'full' ? 'write' : mode === 'spell' ? 'spell' : 'choose';
         return testIntro($('#drill', pane), { id: `${b.id}:${lecon.n}:${kind}`, kind, title: `Unité ${lecon.n % 100} · ${lecon.title}`, items: testItems(b, [lecon]), pool: testItems(b, b.units.flatMap(u => u.lecons)), back: `#/${b.id}/${lecon.n}/vocab` });
       }
       if (mode === 'conj') { pane.innerHTML = head + '<div id="drill"></div>'; bindModes(pane, m => paneVocab(ctx, m)); return conjPane(ctx, $('#drill', pane)); }
@@ -2710,7 +2714,7 @@
         const st = MASTER.stats(ctx.book.id, lecon);
         box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">Premier test</p>
           <h2 style="font-size:30px;margin-bottom:10px">First test</h2>
-          <p class="hint-text" style="margin:0 0 18px">All ${lecon.vocab.length} words of this unit, one at a time, no typing. Some questions show a French word and you pick its English meaning; others show a French sentence with a gap and you pick the missing word.<br>A right answer counts as mastered, so you do not need to review it again. A wrong answer does <b>not</b> go into the mistake book (practise those afterwards); a word missed 3 times in first tests is added.</p>
+          <p class="hint-text" style="margin:0 0 18px">All ${lecon.vocab.length} words of this unit, one at a time: a French sentence with a gap, and you pick the missing word. No typing.<br>A right answer counts as mastered, so you do not need to review it again. A wrong answer does <b>not</b> go into the mistake book (practise those afterwards); a word missed 3 times in first tests is added.</p>
           ${st.test ? `<p class="kbd">Last first test: ${st.test}</p>` : ''}
           <button class="btn" id="go">${st.test ? 'Test again' : 'Start the first test'}</button></div>`;
         $('#go', box).onclick = () => reviewChoice(box, shuffle(lecon.vocab.map(v => ({ ...v, kind: 'word', book: ctx.book.id, n: lecon.n }))), 1,

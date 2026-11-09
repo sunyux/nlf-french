@@ -675,3 +675,8 @@ html.cb .gx-p { --gc: #7b4fa3; }
 .tap-next { text-align: center; margin: 10px 0 4px; font: 600 16px var(--display); color: var(--accent); }
 /* the gap in a sentence: a soft rounded box */
 .q-sent .gap { display: inline-block; min-width: 3.4em; height: 1.35em; vertical-align: middle; margin: 0 .15em; background: var(--paper-2); border: 0; border-radius: 12px; color: transparent; overflow: hidden; }
+
+/* top menu hides while scrolling down, returns when scrolling up */
+.top { transition: transform .25s ease; will-change: transform; }
+.top.away { transform: translateY(-115%); }
+html.focusing .top.away { transform: none; }
