@@ -2089,15 +2089,17 @@
   // the top menu slides away while you scroll down and comes back as soon as you scroll up (or are at the top)
   {
     const bar = $('.top'); let lastY = scrollY, tick = false;
+    bar.style.transition = 'transform .25s ease';   // inline, so an older cached stylesheet cannot break it
+    const hide = on => { bar.classList.toggle('away', on); bar.style.transform = on && !document.documentElement.classList.contains('focusing') ? 'translateY(-115%)' : ''; };
     const sync = () => {
       tick = false;
       const y = Math.max(0, scrollY), dy = y - lastY;
-      if (y < 70 || dy < -6) bar.classList.remove('away');
-      else if (dy > 6 && $('#settings').hidden) bar.classList.add('away');
+      if (y < 70 || dy < -6) hide(false);
+      else if (dy > 6 && $('#settings').hidden) hide(true);
       if (Math.abs(dy) > 6 || y < 70) lastY = y;
     };
     window.addEventListener('scroll', () => { if (!tick) { tick = true; requestAnimationFrame(sync); } }, { passive: true });
-    window.addEventListener('hashchange', () => bar.classList.remove('away'));
+    window.addEventListener('hashchange', () => hide(false));
   }
 
   /* ---------- views ---------- */
