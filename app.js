@@ -2294,7 +2294,10 @@
     const s = sentence.replace(/[’]/g, "'");
     const find = rx => { const m = rx.exec(s); if (!m) return null; const at = m.index + m[1].length; return { text: s.slice(0, at) + '____' + s.slice(at + m[2].length), word: m[2], exact: true }; };
     const exact = find(new RegExp(`(^|[^\\p{L}])(${re(core)})(?![\\p{L}])`, 'iu'));
-    if (exact || !loose || core.length < 5) return exact;
+    if (exact || !loose) return exact;
+    const infl = find(new RegExp(`(^|[^\\p{L}])(${re(core)}(?:s|x|e|es))(?![\\p{L}])`, 'iu'));   // plural / feminine form of a short word
+    if (infl) return { ...infl, exact: false };
+    if (core.length < 5) return null;
     const part = find(new RegExp(`(^|[^\\p{L}])(${re(core.slice(0, -2))}\\p{L}*)`, 'iu'));
     return part && { ...part, exact: false };
   }
@@ -2323,7 +2326,7 @@
   const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
   // build one multiple-choice question for a mistake-book item
   // mode '' = mixed (meaning + gapped example, or gapped example + translation);
-  // 'meaning' = French word -> pick the English meaning (small example under it);
+  // 'meaning' = the English meaning with the example sentence under it, the word gapped out: pick the French word;
   // 'sentence' / 'first' = the gapped example + its translation when the word is in its example ('first' is the unit's Sentence quiz)
   function choiceQuestion(e, mode = '') {
     const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
@@ -2370,14 +2373,6 @@
       const wrongs = pickDistractors(info, x => capLike(exact.word, coreFr(x.fr)));
       q.head = `<div class="q-sent" lang="fr">${gapHTML(exact.text)}</div><div class="cloze-en" lang="en">${esc(ex[2] || '')}</div><div class="ppos">Pick the missing word</div>`;
       return finish(exact.word, wrongs);
-    }
-    const meaning = info.en || Gt(info);
-    if (mode === 'meaning' && meaning) {
-      q.lang = 'en';
-      q.head = `<div class="q-fr" lang="fr">${playBtn(q.say)} <b>${esc(e.fr)}</b></div>
-        <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
-        ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
-      return finish(meaning, pickDistractors(info, x => x.en || ''));
     }
     const gap = ex && (exact || gapSentence(ex[0], e.fr, true));
     q.head = `<div class="pmean ${gx(info.pos)}">${MEAN(info)}</div>
