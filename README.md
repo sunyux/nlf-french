@@ -2,7 +2,7 @@
 
 A puppy-themed, English–French-only practice site for the three NLF vocabulary lists (Road to A1, A2 and B1/B2): 3,789 words, each with an example sentence.
 
-- Per unit: Browse, Study first, First test, Dictation, **Full test** (every word, shuffled, saved so you can stop and resume), **Meaning quiz** (French word → pick the English meaning, with similar-looking wrong answers), Conjugation, Sentences (gaps, translate, dictation).
+- Per unit: Browse, Study first, **Meaning quiz** (French word → pick the English meaning, with similar-looking wrong answers), **Sentence quiz** (a sentence with a gap, pick the missing word), Dictation, **Full test** (every word, shuffled, saved so you can stop and resume), Spelling quiz, Conjugation, Sentences (gaps, translate, dictation).
 - Per book (A1 / A2 / B1-B2): a full test and a meaning quiz over all the words.
 - **Today's round** on the home page: one button that picks 5 new words (study, then write them) or up to 8 mistake-book reviews. **Quick rounds** (10 words) with a clear finish and "another round or I am done".
 - Spelling quiz on your own mistakes; a calm weekly summary; reading comfort settings (text size, roomy spacing, softer backgrounds); automatic word audio toggle.

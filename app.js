@@ -2320,7 +2320,7 @@
   const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
   // build one multiple-choice question for a mistake-book item
   // mode '' = mistake book (meaning + gapped example, or gapped example + translation);
-  // 'first' = the unit's First test: always the gapped example + its translation when the word is in its example
+  // 'first' = the unit's Sentence quiz: always the gapped example + its translation when the word is in its example
   function choiceQuestion(e, mode = '') {
     const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
     const v = lecon && e.kind === 'word' ? lecon.vocab.find(x => x.fr === e.fr) : null;
@@ -2374,7 +2374,7 @@
     return finish(e.fr, pickDistractors(info, x => x.fr));
   }
 
-  // opts.first: the unit's First test (sentence gaps, scored like the old typed test: right = mastered, misses stay out of the mistake book until a word is missed 3 times)
+  // opts.first: the unit's Sentence quiz (sentence gaps, scored like the old typed test: right = mastered, misses stay out of the mistake book until a word is missed 3 times)
   function reviewChoice(box, queue, round = 1, opts = {}) {
     const practice = round > 1, scored = !!opts.first && !practice;
     let i = 0, answered = false, right = 0, q = null, saved = false, addedToBook = false, offTap = null;
@@ -2387,7 +2387,7 @@
           opts.ctx.save('vocab', right / queue.length);
         }
         const allRight = !wrong.length;
-        box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">${practice ? bi(`第 ${round - 1} 轮练习`, `Practice round ${round - 1}`) : opts.first ? 'Premier test' : 'Bilan'}</p>
+        box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">${practice ? bi(`第 ${round - 1} 轮练习`, `Practice round ${round - 1}`) : opts.first ? 'Quiz de phrases' : 'Bilan'}</p>
           <div class="score">${right} / ${queue.length}</div>
           <p>${allRight ? (practice ? bi('全部答对了！今天的错题都练会了。', 'All right! You have learned today\'s misses.') : bi('全部答对！', 'All correct!'))
             : practice ? bi(`还有 ${wrong.length} 个没选对，再来一轮。`, `${wrong.length} still wrong — one more round.`)
@@ -2424,7 +2424,7 @@
       if (good) {
         right++;
         if (practice) XP.gain(1, bi('练习答对', 'Practice right'));
-        else if (scored) { XP.gain(2, 'First test'); if (inReview(e.book, e.n, e.fr)) SRS.hit(e); else MASTER.word(e.book, e.n, e.fr); }
+        else if (scored) { XP.gain(2, 'Sentence quiz'); if (inReview(e.book, e.n, e.fr)) SRS.hit(e); else MASTER.word(e.book, e.n, e.fr); }
         else { SRS.hit(e); XP.gain(3, '复习答对'); }
         i++; draw(); return;   // right: straight to the next one
       }
@@ -2661,7 +2661,7 @@
     if (mode === 'listen') { mode = 'write'; store.set('vauto', true); }
     const { lecon, pane } = ctx;
     store.set('vmode', mode);
-    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['test', bi('首测', 'First test')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['choose', bi('选意思', 'Meaning quiz')], ['spell', bi('选拼写', 'Spelling quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
+    const head = modeBar([['list', bi('浏览', 'Browse')], ['learn', bi('先学一遍', 'Study first')], ['choose', bi('选意思', 'Meaning quiz')], ['test', bi('首测', 'Sentence quiz')], ['write', bi('默写', 'Dictation')], ['full', bi('全测', 'Full test')], ['spell', bi('选拼写', 'Spelling quiz')], ['conj', bi('动词变位', 'Conjugation')]], mode);
     if (mode === 'list') {
       const groups = [];
       orderedVocab(ctx.book.id, lecon).forEach(v => { let g = groups.find(x => x.g === v.g); if (!g) groups.push(g = { g: v.g, items: [] }); g.items.push(v); });
@@ -2712,11 +2712,11 @@
       }
       if (mode === 'test') {
         const st = MASTER.stats(ctx.book.id, lecon);
-        box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">Premier test</p>
-          <h2 style="font-size:30px;margin-bottom:10px">First test</h2>
+        box.innerHTML = `<div class="drill summary"><p class="kicker" lang="fr">Quiz de phrases</p>
+          <h2 style="font-size:30px;margin-bottom:10px">Sentence quiz</h2>
           <p class="hint-text" style="margin:0 0 18px">All ${lecon.vocab.length} words of this unit, one at a time: a French sentence with a gap, and you pick the missing word. No typing.<br>A right answer counts as mastered, so you do not need to review it again. A wrong answer does <b>not</b> go into the mistake book (practise those afterwards); a word missed 3 times in first tests is added.</p>
-          ${st.test ? `<p class="kbd">Last first test: ${st.test}</p>` : ''}
-          <button class="btn" id="go">${st.test ? 'Test again' : 'Start the first test'}</button></div>`;
+          ${st.test ? `<p class="kbd">Last sentence quiz: ${st.test}</p>` : ''}
+          <button class="btn" id="go">${st.test ? 'Test again' : 'Start the sentence quiz'}</button></div>`;
         $('#go', box).onclick = () => reviewChoice(box, shuffle(lecon.vocab.map(v => ({ ...v, kind: 'word', book: ctx.book.id, n: lecon.n }))), 1,
           { first: true, ctx, back: `#/${ctx.book.id}/${lecon.n}/vocab` });
       } else {
@@ -3093,7 +3093,7 @@
         <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${r === 'accent' ? accentDiff(inp.value.trim(), v.fr) : frHTML(v.fr)}</div>
         ${!good && !giveUp && r !== 'accent' ? dysCompare(closest(v.fr, inp.value), inp.value) : ''}
         ${r === 'accent' ? `<span class="lab acc-note">${bi('拼写正确，注意标出的重音符号', 'Spelling is right — check the marked accents')}</span>` : ''}
-        ${test && missN ? `<span class="lab">${toBook ? bi(`首测已经错了 ${missN} 次，加入错题本了`, `Missed ${missN} times in first tests — added to the mistake book`) : missN >= 3 ? bi('已经在错题本里了', 'Already in the mistake book') : bi(`首测错了 ${missN} 次（错满 3 次会进错题本）`, `Missed ${missN} times in first tests (3 puts it in the mistake book)`)}</span>` : ''}
+        ${test && missN ? `<span class="lab">${toBook ? bi(`首测已经错了 ${missN} 次，加入错题本了`, `Missed ${missN} times in sentence quizzes — added to the mistake book`) : missN >= 3 ? bi('已经在错题本里了', 'Already in the mistake book') : bi(`首测错了 ${missN} 次（错满 3 次会进错题本）`, `Missed ${missN} times in first tests (3 puts it in the mistake book)`)}</span>` : ''}
         ${tipBox(wordTip(ctx.lecon.n, v))}${exBox(v)}</div>`;
       TTS.say(forms(v.fr).say);
      
