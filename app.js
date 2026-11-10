@@ -2304,6 +2304,8 @@
     return part && { ...part, exact: false };
   }
   // three wrong answers that look like real candidates: same kind of word, same unit, similar spelling
+  const frontMatch = (a, c) => { let p = 0; while (p < a.length && p < c.length && a[p] === c[p]) p++; return p; };
+  const sameStem = (m, t) => { const w = x => (x.match(/[a-z]+/g) || [''])[0]; const a = w(m), b = w(t); return a.length >= 5 && b.length >= 5 && frontMatch(a, b) >= 5; };
   function pickDistractors(v, label) {
     const a = coreFr(v.fr), mean = norm(v.en || '');
     const ranked = choicePool().filter(x => x.fr !== v.fr).map(x => {
@@ -2319,6 +2321,7 @@
     const seen = new Set([norm(label(v))]), out = [];
     for (const x of ranked) {
       if (mean && norm(x.en || '') === mean) continue;
+      if (sameStem(mean, norm(x.en || '')) || (a.length >= 6 && frontMatch(a, coreFr(x.fr)) >= 6)) continue;   // "Balance" vs "Balanced", "équilibre" vs "équilibré(e)": also right, so not a fair wrong answer
       const l = label(x); if (!l || seen.has(norm(l))) continue;
       seen.add(norm(l)); out.push(l); if (out.length === 3) break;
     }
@@ -2328,7 +2331,7 @@
   const gapHTML = t => esc(t).replace('____', '<u class="gap">&emsp;?&emsp;</u>');
   // build one multiple-choice question for a mistake-book item
   // mode '' = mixed (meaning + gapped example, or gapped example + translation);
-  // 'meaning' = the English meaning with the example sentence under it, the word gapped out: pick the French word;
+  // 'meaning' = French word (small example under it) -> pick the English meaning;
   // 'sentence' / 'first' = the gapped example + its translation when the word is in its example ('first' is the unit's Sentence quiz)
   function choiceQuestion(e, mode = '') {
     const book = findBook(e.book), found = book && findLecon(book, e.n), lecon = found && found.lecon;
@@ -2376,10 +2379,20 @@
       q.head = `<div class="q-sent" lang="fr">${gapHTML(exact.text)}</div><div class="cloze-en" lang="en">${esc(ex[2] || '')}</div><div class="ppos">Pick the missing word</div>`;
       return finish(exact.word, wrongs);
     }
+    const meaning = info.en || Gt(info);
+    if (mode === 'meaning' && meaning) {
+      q.lang = 'en';
+      q.head = `<div class="q-fr" lang="fr">${playBtn(q.say)} <b>${esc(e.fr)}</b></div>
+        <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
+        ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
+      return finish(meaning, pickDistractors(info, x => x.en || ''));
+    }
     const gap = ex && (exact || gapSentence(ex[0], e.fr, true));
-    q.head = `<div class="pmean ${gx(info.pos)}">${MEAN(info)}</div>
-      <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
-      ${gap ? `<div class="q-sent small" lang="fr">${gapHTML(gap.text)}</div>` : ''}`;
+    const posTag = `<div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>`;
+    // with an example: the gapped French sentence is the big question, its English meaning sits small under it
+    q.head = gap
+      ? `<div class="q-sent" lang="fr">${gapHTML(gap.text)}</div>${ex[2] ? `<div class="cloze-en" lang="en">${esc(ex[2])}</div>` : `<div class="cloze-en" lang="en">${MEAN(info)}</div>`}${posTag}`
+      : `<div class="pmean ${gx(info.pos)}">${MEAN(info)}</div>${posTag}`;
     return finish(e.fr, pickDistractors(info, x => x.fr));
   }
 
