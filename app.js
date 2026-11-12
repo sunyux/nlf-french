@@ -1812,8 +1812,9 @@
   }
   function toDrill(box) {
     if (!box || !box.isConnected) return;
-    const top = box.getBoundingClientRect().top;
-    if (top < HEADER_GAP() - 20 || top > innerHeight * 0.45) window.scrollTo({ top: Math.max(0, scrollY + top - HEADER_GAP()) });
+    // the page stays exactly where the user left it from one question to the next; it only moves if the quiz is completely off screen
+    const r = box.getBoundingClientRect();
+    if (r.bottom < 80 || r.top > innerHeight - 80) window.scrollTo({ top: Math.max(0, scrollY + r.top - HEADER_GAP()) });
   }
   const playBtn = (text, extra = '') => `<button class="play ${extra}" data-say="${esc(text)}" aria-label="朗读" title="朗读">${ICON.play}</button>`;
   /* ---------- in-depth word card (words-deep.js): meaning, sound, roots, examples, collocations, register, use ---------- */
