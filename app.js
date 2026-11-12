@@ -2091,12 +2091,18 @@
     const bar = $('.top'); let lastY = scrollY, tick = false;
     bar.style.transition = 'transform .25s ease';   // inline, so an older cached stylesheet cannot break it
     const hide = on => { bar.classList.toggle('away', on); bar.style.transform = on && !document.documentElement.classList.contains('focusing') ? 'translateY(-115%)' : ''; };
+    // only a real finger / wheel scroll brings the menu back: the page jumping by itself after an answer must not
+    let userAt = 0, moved = false;
+    addEventListener('touchstart', () => { moved = false; }, { passive: true });
+    addEventListener('touchmove', () => { moved = true; userAt = Date.now(); }, { passive: true });
+    addEventListener('touchend', () => { if (moved) userAt = Date.now(); }, { passive: true });
+    addEventListener('wheel', () => { userAt = Date.now(); }, { passive: true });
     const sync = () => {
       tick = false;
       const y = Math.max(0, scrollY), dy = y - lastY;
-      if (y < 70 || dy < -6) hide(false);
+      if (y < 6 || (dy < -6 && Date.now() - userAt < 1800)) hide(false);
       else if (dy > 6 && $('#settings').hidden) hide(true);
-      if (Math.abs(dy) > 6 || y < 70) lastY = y;
+      if (Math.abs(dy) > 6 || y < 6) lastY = y;
     };
     window.addEventListener('scroll', () => { if (!tick) { tick = true; requestAnimationFrame(sync); } }, { passive: true });
     window.addEventListener('hashchange', () => hide(false));
@@ -2381,7 +2387,7 @@
     }
     const meaning = info.en || Gt(info);
     if (mode === 'meaning' && meaning) {
-      q.lang = 'en';
+      q.lang = 'en'; q.speakOnShow = true;
       q.head = `<div class="q-fr" lang="fr">${playBtn(q.say)} <b>${esc(e.fr)}</b></div>
         <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
         ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
@@ -2437,6 +2443,7 @@
         <div id="fb"></div></div>`;
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
       $('#idk', box).onclick = () => choose(-1);
+      if (q.speakOnShow && store.get('vauto', true)) setTimeout(() => { if (box.isConnected && !answered) TTS.say(q.say); }, 200);   // the French word shown is read out
     };
     const choose = k => {
       if (answered) return; answered = true;

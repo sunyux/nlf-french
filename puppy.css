@@ -680,3 +680,11 @@ html.cb .gx-p { --gc: #7b4fa3; }
 .top { transition: transform .25s ease; will-change: transform; }
 .top.away { transform: translateY(-115%); }
 html.focusing .top.away { transform: none; }
+
+/* the question itself is the big thing; the answer buttons stay modest */
+.choose-prompt .q-fr { font-size: clamp(38px, 10.5vw, 56px) !important; line-height: 1.15; }   /* !important: the generic [lang=fr] size rule is stronger */
+.choose-prompt .q-fr .play { transform: scale(1.2); }
+.choose-prompt .ppos .pos { font-size: 20px; }
+.drill .q-ex { font-size: clamp(22px, 6vw, 28px) !important; font-weight: 600; color: var(--ink); line-height: 1.35; margin-top: 14px; }
+.drill .q-ex .play { transform: scale(1); }
+.opts:not(.spell-opts) .opt { font-size: 18px; padding: 11px 14px; }
