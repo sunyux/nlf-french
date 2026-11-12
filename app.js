@@ -2241,8 +2241,18 @@
   }
   function reviewLearn(box, list, next, opts = {}) {
     const items = opts.onNext ? [...list] : [...list].sort((a, b) => a.n - b.n);
-    let i = 0, earned = 0;
-    const advance = () => { earned += learnPoints(items[i]); i++; draw(); };
+    // memory: the cards already studied are saved, so coming back carries on at the first one not studied yet
+    // (a unit remembers until you press "Study again"; the mistake book's list changes, so it remembers per day)
+    const mkey = 'lstudy:' + (opts.onNext && items[0] ? `${items[0].book}:${items[0].n}` : (opts.title || next) + ':' + dayStr());
+    const idOf = e => `${e.book || ''}|${e.n}|${e.kind || ''}|${e.fr}`;
+    let seen = store.get(mkey, []);
+    if (!Array.isArray(seen)) seen = [];
+    const markSeen = e => { const id = idOf(e); if (!seen.includes(id)) { seen.push(id); store.set(mkey, seen); } };
+    let i = Math.max(0, items.findIndex(e => !seen.includes(idOf(e))));
+    if (seen.length && items.every(e => seen.includes(idOf(e)))) i = items.length;   // everything was studied already
+    const resumedAt = i > 0 && i < items.length ? i : 0;
+    let earned = 0;
+    const advance = () => { earned += learnPoints(items[i]); markSeen(items[i]); i++; draw(); };
     const draw = () => {
       if (i >= items.length) {
         const bonus = learnBonus('pass:' + (opts.title || next), opts.onNext ? 5 : 3); earned += bonus;
@@ -2250,7 +2260,7 @@
           <div class="score">${earned ? '+' + earned : '0'}<small> ${bi('分', 'pts')}</small></div>
           <p class="hint-text">${earned ? bi(`${items.length} 个都看过一遍了。看一个新词 +1 分，学完整遍 +${opts.onNext ? 5 : 3} 分（每天各算一次）。`, `All ${items.length} studied. +1 for each new card, +${opts.onNext ? 5 : 3} for finishing (once a day).`) : bi(`${items.length} 个今天都已经学过，积分已经算过了。`, `You studied all ${items.length} today already — points were counted.`)} ${opts.onNext ? bi('现在默写巩固一下。', 'Now write them out.') : bi('现在默写巩固一下。', 'Now write them out.')}</p>
           <div class="toolbar">${opts.onNext ? `<button class="btn" id="lr-go">${opts.nextLabel}</button>` : `<a class="btn" href="${next}">${bi('开始复习', 'Start the review')}</a>`}<button class="btn ghost" id="lr-again">${bi('再看一遍', 'Go through again')}</button></div></div>`;
-        $('#lr-again', box).onclick = () => { i = 0; earned = 0; draw(); };
+        $('#lr-again', box).onclick = () => { seen = []; store.set(mkey, seen); i = 0; earned = 0; draw(); };
         if (opts.onNext) $('#lr-go', box).onclick = opts.onNext;
         return;
       }
@@ -2259,6 +2269,7 @@
       const tip = word ? wordTip(e.n, e) : '';
       box.innerHTML = `<div class="drill learn-card ${word && gender(e.pos) ? 'g-' + gender(e.pos) : ''}${word ? gx(e.pos) : ''}">
         <div class="prog-line"><span class="kbd">${i + 1} / ${items.length}</span><span class="kbd" lang="fr">${esc(leconName(e.n))}</span></div>
+        ${resumedAt && i === resumedAt ? `<p class="kbd lr-resume">${bi('接着上次学到的位置', 'Carrying on from where you stopped')} · <button class="btn ghost small" id="lr-restart">${bi('从头开始', 'Start over')}</button></p>` : ''}
         <div class="lc-fr" lang="fr">${playBtn(say)} ${word ? artHint(e) : ''}<b>${word ? frHTML(e.fr) : esc(e.fr)}</b></div>
         <div class="lc-mean">${e.kind === 'cloze' ? esc(e.zh) + (e.sen ? `<div class="cloze-en" lang="en">${esc(e.sen)}</div>` : '') : G(e)}${e.pos ? ` <span class="pos ${gender(e.pos) ? 'g-' + gender(e.pos) : ''}">${esc(e.pos)}</span>` : ''}</div>
         ${e.wrong ? `<p class="kbd">${bi(`写错过 ${e.wrong} 次`, `Missed ${e.wrong} times`)}</p>` : ''}
@@ -2274,6 +2285,7 @@
         <p class="kbd">${bi('← → 键翻页，空格再听一遍', '← → to move, Space to hear again')}</p></div>`;
       $('#lr-prev', box).onclick = () => { if (i) { i--; draw(); } };
       $('#lr-next', box).onclick = advance;
+      const rs = $('#lr-restart', box); if (rs) rs.onclick = () => { seen = []; store.set(mkey, seen); i = 0; earned = 0; draw(); };
       TTS.say(say);
     };
     const key = ev => {
