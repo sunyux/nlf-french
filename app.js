@@ -350,6 +350,12 @@
           else if (b && k === 'nh:errs') { const seen = new Set(b.map(e => JSON.stringify(e))); v = JSON.stringify([...b, ...a.filter(e => !seen.has(JSON.stringify(e)))].slice(-400)); }
           else if (b && k === 'nh:journal') { for (const [dd, e] of Object.entries(a)) if (!b[dd] || (e.updated || '') > (b[dd].updated || '')) b[dd] = e; v = JSON.stringify(b); }
           else if (b && k === 'nh:mywords') { const have = new Set(b.map(w => w.fr)); v = JSON.stringify([...b, ...a.filter(w => !have.has(w.fr))]); }
+          else if (b && k.startsWith('nh:lstudy:')) {
+            const na = Array.isArray(a) ? { r: 0, ids: a } : a, nb = Array.isArray(b) ? { r: 0, ids: b } : b;
+            const r = Math.max(na.r || 0, nb.r || 0), ids = new Set();
+            for (const x of [na, nb]) if ((x.r || 0) === r) (x.ids || []).forEach(id => ids.add(id));
+            v = JSON.stringify({ r, ids: [...ids] });
+          }
           else if (b && k.startsWith('nh:testmiss:')) { for (const [w, n] of Object.entries(a)) b[w] = Math.max(b[w] || 0, n); v = JSON.stringify(b); }
           else if (b && k.startsWith('nh:sons:')) v = JSON.stringify({ quiz: Math.max(a.quiz || 0, b.quiz || 0), dict: Math.max(a.dict || 0, b.dict || 0) });
         } catch { }
@@ -2245,11 +2251,12 @@
     // (a unit remembers until you press "Study again"; the mistake book's list changes, so it remembers per day)
     const mkey = 'lstudy:' + (opts.onNext && items[0] ? `${items[0].book}:${items[0].n}` : (opts.title || next) + ':' + dayStr());
     const idOf = e => `${e.book || ''}|${e.n}|${e.kind || ''}|${e.fr}`;
-    let seen = store.get(mkey, []);
-    if (!Array.isArray(seen)) seen = [];
-    const markSeen = e => { const id = idOf(e); if (!seen.includes(id)) { seen.push(id); store.set(mkey, seen); } };
-    let i = Math.max(0, items.findIndex(e => !seen.includes(idOf(e))));
-    if (seen.length && items.every(e => seen.includes(idOf(e)))) i = items.length;   // everything was studied already
+    const load = () => { const v = store.get(mkey, null); return Array.isArray(v) ? { r: 0, ids: v } : v && Array.isArray(v.ids) ? v : { r: 0, ids: [] }; };
+    let seen = load();
+    const markSeen = e => { const id = idOf(e); if (!seen.ids.includes(id)) { seen.ids.push(id); store.set(mkey, seen); } };
+    const reset = () => { seen = { r: Date.now(), ids: [] }; store.set(mkey, seen); };
+    let i = Math.max(0, items.findIndex(e => !seen.ids.includes(idOf(e))));
+    if (seen.ids.length && items.every(e => seen.ids.includes(idOf(e)))) i = items.length;   // everything was studied already
     const resumedAt = i > 0 && i < items.length ? i : 0;
     let earned = 0;
     const advance = () => { earned += learnPoints(items[i]); markSeen(items[i]); i++; draw(); };
@@ -2260,7 +2267,7 @@
           <div class="score">${earned ? '+' + earned : '0'}<small> ${bi('分', 'pts')}</small></div>
           <p class="hint-text">${earned ? bi(`${items.length} 个都看过一遍了。看一个新词 +1 分，学完整遍 +${opts.onNext ? 5 : 3} 分（每天各算一次）。`, `All ${items.length} studied. +1 for each new card, +${opts.onNext ? 5 : 3} for finishing (once a day).`) : bi(`${items.length} 个今天都已经学过，积分已经算过了。`, `You studied all ${items.length} today already — points were counted.`)} ${opts.onNext ? bi('现在默写巩固一下。', 'Now write them out.') : bi('现在默写巩固一下。', 'Now write them out.')}</p>
           <div class="toolbar">${opts.onNext ? `<button class="btn" id="lr-go">${opts.nextLabel}</button>` : `<a class="btn" href="${next}">${bi('开始复习', 'Start the review')}</a>`}<button class="btn ghost" id="lr-again">${bi('再看一遍', 'Go through again')}</button></div></div>`;
-        $('#lr-again', box).onclick = () => { seen = []; store.set(mkey, seen); i = 0; earned = 0; draw(); };
+        $('#lr-again', box).onclick = () => { reset(); i = 0; earned = 0; draw(); };
         if (opts.onNext) $('#lr-go', box).onclick = opts.onNext;
         return;
       }
@@ -2285,7 +2292,7 @@
         <p class="kbd">${bi('← → 键翻页，空格再听一遍', '← → to move, Space to hear again')}</p></div>`;
       $('#lr-prev', box).onclick = () => { if (i) { i--; draw(); } };
       $('#lr-next', box).onclick = advance;
-      const rs = $('#lr-restart', box); if (rs) rs.onclick = () => { seen = []; store.set(mkey, seen); i = 0; earned = 0; draw(); };
+      const rs = $('#lr-restart', box); if (rs) rs.onclick = () => { reset(); i = 0; earned = 0; draw(); };
       TTS.say(say);
     };
     const key = ev => {
