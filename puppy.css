@@ -688,3 +688,8 @@ html.focusing .top.away { transform: none; }
 .drill .q-ex { font-size: clamp(22px, 6vw, 28px) !important; font-weight: 600; color: var(--ink); line-height: 1.35; margin-top: 14px; }
 .drill .q-ex .play { transform: scale(1); }
 .opts:not(.spell-opts) .opt { font-size: 18px; padding: 11px 14px; }
+
+/* Fill the gaps: typed gaps sit inside the big sentence */
+.q-sent .cloze-in { font: inherit; color: var(--ink); min-width: 3.2em; max-width: 100%; margin: 0 .15em; padding: 0 .2em; }
+.q-sent .cloze-fix { font-size: .6em; color: var(--ok, #3f6b3a); margin: 0 .3em; }
+.resumed { text-align: center; margin: 0 0 8px; }
