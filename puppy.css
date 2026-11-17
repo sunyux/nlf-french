@@ -693,3 +693,6 @@ html.focusing .top.away { transform: none; }
 .q-sent .cloze-in { font: inherit; color: var(--ink); min-width: 3.2em; max-width: 100%; margin: 0 .15em; padding: 0 .2em; }
 .q-sent .cloze-fix { font-size: .6em; color: var(--ok, #3f6b3a); margin: 0 .3em; }
 .resumed { text-align: center; margin: 0 0 8px; }
+
+/* phones: the little accent keyboard only gets in the way (the phone's own keyboard has the accents) */
+@media (pointer: coarse), (max-width: 760px) { .acc-bar { display: none !important; } }

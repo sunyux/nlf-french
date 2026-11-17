@@ -1672,11 +1672,11 @@
   /* ---------- text helpers ---------- */
   const strip = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
   const norm = s => s.normalize('NFC').toLowerCase()
-    .replace(/[’`´]/g, "'").replace(/œ/g, 'oe').replace(/æ/g, 'ae')
+    .replace(/[’‘ʼ′`´]/g, "'").replace(/[‐‑‒–—−]/g, '-').replace(/œ/g, 'oe').replace(/æ/g, 'ae')
     .replace(/…|\.\.\./g, ' ').replace(/[¹²³*]/g, '')
     .replace(/[.!?。！？]+$/, '').replace(/\s+/g, ' ').trim();
   const TOKEN = /[\p{L}\p{N}@]+(?:[-.@][\p{L}\p{N}]+)*'?/gu;
-  const tokens = s => s.normalize('NFC').replace(/[’`]/g, "'").match(TOKEN) || [];
+  const tokens = s => s.normalize('NFC').replace(/[’‘ʼ′`´]/g, "'").replace(/[‐‑‒–—−]/g, '-').match(TOKEN) || [];
   const key = t => norm(t);
   const loose = t => strip(norm(t));
 
