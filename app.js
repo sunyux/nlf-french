@@ -3500,6 +3500,7 @@
           : `<div class="pzh ${s.zh.length > 30 ? 'long' : ''}">${G(s)}</div>`}</div>
         <textarea class="answer-in" id="ans" lang="fr" rows="2" autocapitalize="off" spellcheck="false" placeholder="${bi('写出法语句子…', 'Write the French sentence…')}"></textarea>
         <div class="drill-actions">
+          <button class="btn" id="scheck" type="button">${bi('检查', 'Check')}</button>
           ${dictee ? '' : playBtn(s.fr)}
           <button class="btn ghost small" id="prev" ${i ? '' : 'disabled'}>上一句</button>
           <button class="btn ghost small" id="skip">看答案</button>
@@ -3511,6 +3512,7 @@
       inp.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); answered ? (i++, draw()) : check(); } };
       $('#prev', body).onclick = () => { i--; draw(); };
       $('#skip', body).onclick = () => check(true);
+      $('#scheck', body).onclick = () => { if (answered) { i++; draw(); } else check(); };
     };
     const check = (giveUp = false) => {
       const s = list[i], val = $('#ans', body).value;
@@ -3531,6 +3533,7 @@
         <div class="ans" lang="fr">${playBtn(s.fr)}<span>${giveUp ? esc(s.fr) : marked(s.fr, d.st)}</span></div>
         ${d.extra.length && !giveUp ? `<span class="lab">多写/拼错的词：<span class="w-extra" lang="fr">${esc(d.extra.join(' '))}</span></span>` : ''}
         ${dictee ? `<span class="lab" style="font-family:var(--zh);margin-top:6px">${G(s)}</span>` : ''}</div>`;
+      const sb = $('#scheck', body); if (sb) sb.textContent = i + 1 >= list.length ? bi('看结果', 'See the result') : bi('下一句 ›', 'Next ›');
       if (!dictee) TTS.say(s.fr);
     };
     const done = () => {
