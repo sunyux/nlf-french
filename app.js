@@ -1822,6 +1822,11 @@
     const r = box.getBoundingClientRect();
     if (r.bottom < 80 || r.top > innerHeight - 80) window.scrollTo({ top: Math.max(0, scrollY + r.top - HEADER_GAP()) });
   }
+  // auto-play: 'vauto' = words, 'sauto' = example sentences (read after the word, or on its own)
+  const sayEx = (word, ex) => {
+    if (ex && store.get('sauto', false)) TTS.say(word || ex, () => { if (word) setTimeout(() => TTS.say(ex), 250); });
+    else TTS.say(word || ex);
+  };
   const playBtn = (text, extra = '') => `<button class="play ${extra}" data-say="${esc(text)}" aria-label="朗读" title="朗读">${ICON.play}</button>`;
   /* ---------- in-depth word card (words-deep.js): meaning, sound, roots, examples, collocations, register, use ---------- */
   function openDeep(fr) {
@@ -1914,7 +1919,9 @@
       <label><span class="lab">${bi('背景颜色', 'Background colour')}</span>
         <select id="s-rbg">${[['default', 'Puppy cream (default)'], ['cream', 'Soft cream'], ['blue', 'Pale blue'], ['grey', 'Soft grey']].map(([k, t]) => `<option value="${k}" ${(settings.rbg || 'default') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="chk"><input type="checkbox" id="s-cb" ${settings.cb !== false ? 'checked' : ''}> ${bi('色弱友好配色（蓝 / 橙 / 紫，代替红 / 绿 / 粉）', 'Colour-weak friendly colours (blue / orange / purple instead of red / green / pink)')}</label>
-      <label class="chk"><input type="checkbox" id="s-auto" ${store.get('vauto', false) ? 'checked' : ''}> ${bi('每题自动朗读', 'Say each word out loud automatically')}</label>
+      <p class="set-h">${bi('自动播放', 'Auto-play audio')}</p>
+      <label class="chk"><input type="checkbox" id="s-auto" ${store.get('vauto', false) ? 'checked' : ''}> ${bi('自动读单词', 'Play each word automatically')}</label>
+      <label class="chk"><input type="checkbox" id="s-sauto" ${store.get('sauto', false) ? 'checked' : ''}> ${bi('自动读例句（学习卡片、选意思；答完题后读整句；填空题一出现就读整句）', 'Play example sentences automatically (study cards, meaning quiz, after each answer; Fill the gaps reads the whole sentence as soon as it appears)')}</label>
       <p class="set-h">${bi('声音', 'Sound')}</p>
       <label><span class="lab">朗读语速 · <b id="rate-v">${settings.rate.toFixed(2)}</b></span>
         <input type="range" id="s-rate" min="0.5" max="1.2" step="0.05" value="${settings.rate}"></label>
@@ -1934,6 +1941,7 @@
     $('#s-rsp').onchange = e => { settings.rsp = e.target.checked; saveSettings(); applyReading(); };
     $('#s-rbg').onchange = e => { settings.rbg = e.target.value; saveSettings(); applyReading(); };
     $('#s-auto').onchange = e => store.set('vauto', e.target.checked);
+    $('#s-sauto').onchange = e => store.set('sauto', e.target.checked);
     $('#s-rate').oninput = e => { settings.rate = +e.target.value; $('#rate-v').textContent = settings.rate.toFixed(2); saveSettings(); };
     $('#s-vol').oninput = e => { settings.volume = +e.target.value; window.NH_VOLUME = settings.volume; $('#vol-v').textContent = Math.round(settings.volume * 100) + '%'; saveSettings(); };
     $('#s-vol').onchange = () => TTS.say('Bonjour !');
@@ -2293,7 +2301,7 @@
       $('#lr-prev', box).onclick = () => { if (i) { i--; draw(); } };
       $('#lr-next', box).onclick = advance;
       const rs = $('#lr-restart', box); if (rs) rs.onclick = () => { reset(); i = 0; earned = 0; draw(); };
-      TTS.say(say);
+      sayEx(say, word && e.ex && e.ex[0]);
     };
     const key = ev => {
       if (!box.isConnected) return document.removeEventListener('keydown', key);
@@ -2399,6 +2407,7 @@
     const ex = info.ex && info.ex[0] ? info.ex : null;
     const exact = ex && gapSentence(ex[0], e.fr);
     q.full = exBox(info);
+    q.exSay = ex ? ex[0] : '';
     q.tip = e.n ? tipBox(wordTip(e.n, info)) : '';
     if (exact && (mode === 'first' || mode === 'sentence' || (mode !== 'meaning' && Math.random() < 0.5))) {
       const wrongs = pickDistractors(info, x => capLike(exact.word, coreFr(x.fr)));
@@ -2463,7 +2472,7 @@
         <div id="fb"></div></div>`;
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
       $('#idk', box).onclick = () => choose(-1);
-      if (q.speakOnShow && store.get('vauto', true)) setTimeout(() => { if (box.isConnected && !answered) TTS.say(q.say); }, 200);   // the French word shown is read out
+      if (q.speakOnShow && store.get('vauto', true)) setTimeout(() => { if (box.isConnected && !answered) sayEx(q.say, q.exSay); }, 200);   // the French word shown is read out
     };
     const choose = k => {
       if (answered) return; answered = true;
@@ -2486,7 +2495,7 @@
       } else if (!practice) SRS.miss(e, k >= 0 ? q.options[k] : '');
       $('#fb', box).innerHTML = TAP_HINT;   // the right answer is lit up above; a tap anywhere goes on
       offTap = tapToContinue(() => { i++; draw(); });
-      TTS.say(q.say);
+      sayEx(q.say, q.exSay);
     };
     const keys = ev => {
       if (!box.isConnected) return document.removeEventListener('keydown', keys);
@@ -2812,6 +2821,7 @@
       ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-mqex" ${store.get('mqex', true) ? 'checked' : ''}> Show a small example sentence under each word</label>` : ''}
       ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-tricky" ${store.get('tricky', true) ? 'checked' : ''}> Tricky choices: wrong answers are similar words (same type, same unit, similar spelling)</label>` : ''}
       <label class="kbd tricky-opt"><input type="checkbox" id="t-auto" ${store.get('vauto', false) ? 'checked' : ''}> Say each word out loud automatically</label>
+      <label class="kbd tricky-opt"><input type="checkbox" id="t-sauto" ${store.get('sauto', false) ? 'checked' : ''}> Also read the example sentence out loud</label>
       <div class="toolbar" style="justify-content:center">
         ${saved ? `<button class="btn" id="t-go">Resume</button><button class="btn ghost" id="t-new">Start over</button>` : `<button class="btn" id="t-go">Start</button>`}
         ${cfg.items.length > QUICK_N ? `<button class="btn ghost" id="t-quick">Quick round · ${QUICK_N} words</button>` : ''}
@@ -2822,6 +2832,7 @@
     $('#t-go', box).onclick = () => testRun(box, cfg, saved || fresh());
     const n = $('#t-new', box); if (n) n.onclick = () => testRun(box, cfg, fresh());
     const au = $('#t-auto', box); if (au) au.onchange = () => store.set('vauto', au.checked);
+    const sa = $('#t-sauto', box); if (sa) sa.onchange = () => store.set('sauto', sa.checked);
     const q = $('#t-quick', box); if (q) q.onclick = () => quickRound(box, cfg, shuffle(cfg.items));
   }
   // a short round: QUICK_N words, a clear end, then "another round or stop"
@@ -2876,7 +2887,7 @@
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
         $('#t-next', box).onclick = draw; $('#t-next', box).focus({ preventScroll: true });
-        TTS.say(forms(v.fr).say);
+        sayEx(forms(v.fr).say, v.ex && v.ex[0]);
       };
       inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); answered ? draw() : check(false); } };
       $('#skip', box).onclick = () => check(true);
@@ -2975,7 +2986,7 @@
         if (good) return draw();
         $('#fb', box).innerHTML = TAP_HINT;
         offTap = tapToContinue(draw);
-        TTS.say(forms(v.fr).say);
+        sayEx(forms(v.fr).say, v.ex && v.ex[0]);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
       $('#t-idk', box).onclick = () => choose(-1);
@@ -3012,7 +3023,7 @@
         if (good) return draw();
         $('#fb', box).innerHTML = TAP_HINT;   // the right answer is lit up above; a tap goes on
         offTap = tapToContinue(draw);
-        TTS.say(forms(v.fr).say);
+        sayEx(forms(v.fr).say, v.ex && v.ex[0]);
       };
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
       $('#t-idk', box).onclick = () => choose(-1);
@@ -3144,7 +3155,7 @@
         ${r === 'accent' ? `<span class="lab acc-note">${bi('拼写正确，注意标出的重音符号', 'Spelling is right — check the marked accents')}</span>` : ''}
         ${test && missN ? `<span class="lab">${toBook ? bi(`首测已经错了 ${missN} 次，加入错题本了`, `Missed ${missN} times in sentence quizzes — added to the mistake book`) : missN >= 3 ? bi('已经在错题本里了', 'Already in the mistake book') : bi(`首测错了 ${missN} 次（错满 3 次会进错题本）`, `Missed ${missN} times in first tests (3 puts it in the mistake book)`)}</span>` : ''}
         ${tipBox(wordTip(ctx.lecon.n, v))}${exBox(v)}</div>`;
-      TTS.say(forms(v.fr).say);
+      sayEx(forms(v.fr).say, v.ex && v.ex[0]);
      
     };
     const done = () => {
@@ -3451,6 +3462,7 @@
       const ins = $$('.cloze-in', body);
       ins[0].focus({ preventScroll: true });
       $('#c-read', body).onclick = () => TTS.say(full);
+      if (store.get('sauto', false)) setTimeout(() => { if (body.isConnected && !answered) TTS.say(full); }, 250);
       const check = giveUp => {
         if (answered) return;
         if (!giveUp && ins.every(x => !x.value.trim())) return;
