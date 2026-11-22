@@ -1824,10 +1824,10 @@
   }
   // auto-play: 'vauto' = words, 'sauto' = example sentences (read after the word, or on its own)
   const sayEx = (word, ex) => {
-    if (ex && store.get('sauto', false)) TTS.say(word || ex, () => { if (word) setTimeout(() => TTS.say(ex), 250); });
+    if (ex && store.get('sauto', true)) TTS.say(word || ex, () => { if (word) setTimeout(() => TTS.say(ex), 250); });
     else TTS.say(word || ex);
   };
-  const playBtn = (text, extra = '') => `<button class="play ${extra}" data-say="${esc(text)}" aria-label="朗读" title="朗读">${ICON.play}</button>`;
+  const playBtn = (text, extra = '', ex = '') => `<button class="play ${extra}" data-say="${esc(text)}"${ex ? ` data-ex="${esc(ex)}"` : ''} aria-label="朗读" title="朗读">${ICON.play}</button>`;
   /* ---------- in-depth word card (words-deep.js): meaning, sound, roots, examples, collocations, register, use ---------- */
   function openDeep(fr) {
     const en = L() === 'en' && window.DEEP_EN && DEEP_EN[fr];
@@ -1890,7 +1890,9 @@
     e.stopPropagation();
     $$('.play.on').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
-    TTS.say(b.dataset.say, () => b.classList.remove('on'));
+    const ex = b.dataset.ex;
+    if (ex && store.get('sauto', true)) TTS.say(b.dataset.say, () => setTimeout(() => TTS.say(ex, () => b.classList.remove('on')), 250));   // the word first, then its example sentence
+    else TTS.say(b.dataset.say, () => b.classList.remove('on'));
   });
 
   // read a list of lines one after another, calling onLine(i) as each starts
@@ -1921,7 +1923,7 @@
       <label class="chk"><input type="checkbox" id="s-cb" ${settings.cb !== false ? 'checked' : ''}> ${bi('色弱友好配色（蓝 / 橙 / 紫，代替红 / 绿 / 粉）', 'Colour-weak friendly colours (blue / orange / purple instead of red / green / pink)')}</label>
       <p class="set-h">${bi('自动播放', 'Auto-play audio')}</p>
       <label class="chk"><input type="checkbox" id="s-auto" ${store.get('vauto', false) ? 'checked' : ''}> ${bi('自动读单词', 'Play each word automatically')}</label>
-      <label class="chk"><input type="checkbox" id="s-sauto" ${store.get('sauto', false) ? 'checked' : ''}> ${bi('自动读例句（学习卡片、选意思；答完题后读整句；填空题一出现就读整句）', 'Play example sentences automatically (study cards, meaning quiz, after each answer; Fill the gaps reads the whole sentence as soon as it appears)')}</label>
+      <label class="chk"><input type="checkbox" id="s-sauto" ${store.get('sauto', true) ? 'checked' : ''}> ${bi('自动读例句（先读单词，再读例句：学习卡片、选意思、浏览列表、答完题后；填空题一出现就读整句）', 'Play example sentences automatically (the word first, then its sentence: study cards, meaning quiz, browse list, after each answer; Fill the gaps reads the whole sentence as soon as it appears)')}</label>
       <p class="set-h">${bi('声音', 'Sound')}</p>
       <label><span class="lab">朗读语速 · <b id="rate-v">${settings.rate.toFixed(2)}</b></span>
         <input type="range" id="s-rate" min="0.5" max="1.2" step="0.05" value="${settings.rate}"></label>
@@ -2285,7 +2287,7 @@
       box.innerHTML = `<div class="drill learn-card ${word && gender(e.pos) ? 'g-' + gender(e.pos) : ''}${word ? gx(e.pos) : ''}">
         <div class="prog-line"><span class="kbd">${i + 1} / ${items.length}</span><span class="kbd" lang="fr">${esc(leconName(e.n))}</span></div>
         ${resumedAt && i === resumedAt ? `<p class="kbd lr-resume">${bi('接着上次学到的位置', 'Carrying on from where you stopped')} · <button class="btn ghost small" id="lr-restart">${bi('从头开始', 'Start over')}</button></p>` : ''}
-        <div class="lc-fr" lang="fr">${playBtn(say)} ${word ? artHint(e) : ''}<b>${word ? frHTML(e.fr) : esc(e.fr)}</b></div>
+        <div class="lc-fr" lang="fr">${playBtn(say, '', word && e.ex ? e.ex[0] : '')} ${word ? artHint(e) : ''}<b>${word ? frHTML(e.fr) : esc(e.fr)}</b></div>
         <div class="lc-mean">${e.kind === 'cloze' ? esc(e.zh) + (e.sen ? `<div class="cloze-en" lang="en">${esc(e.sen)}</div>` : '') : G(e)}${e.pos ? ` <span class="pos ${gender(e.pos) ? 'g-' + gender(e.pos) : ''}">${esc(e.pos)}</span>` : ''}</div>
         ${e.wrong ? `<p class="kbd">${bi(`写错过 ${e.wrong} 次`, `Missed ${e.wrong} times`)}</p>` : ''}
         ${triesHTML(e)}
@@ -2417,7 +2419,7 @@
     const meaning = info.en || Gt(info);
     if (mode === 'meaning' && meaning) {
       q.lang = 'en'; q.speakOnShow = true;
-      q.head = `<div class="q-fr" lang="fr">${playBtn(q.say)} <b>${esc(e.fr)}</b></div>
+      q.head = `<div class="q-fr" lang="fr">${playBtn(q.say, '', ex ? ex[0] : '')} <b>${esc(e.fr)}</b></div>
         <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
         ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
       return finish(meaning, pickDistractors(info, x => x.en || ''));
@@ -2472,7 +2474,7 @@
         <div id="fb"></div></div>`;
       $$('.opt', box).forEach(b => b.onclick = () => choose(+b.dataset.k));
       $('#idk', box).onclick = () => choose(-1);
-      if (q.speakOnShow && store.get('vauto', true)) setTimeout(() => { if (box.isConnected && !answered) sayEx(q.say, q.exSay); }, 200);   // the French word shown is read out
+      if (q.speakOnShow && (store.get('vauto', true) || store.get('sauto', true))) setTimeout(() => { if (box.isConnected && !answered) sayEx(q.say, q.exSay); }, 200);   // the French word shown is read out
     };
     const choose = k => {
       if (answered) return; answered = true;
@@ -2732,7 +2734,7 @@
           <button class="btn ghost small" id="vplay">${ICON.play} ${bi('全部朗读', 'Read all')}</button>`) +
         `<p class="hint-text">${bi('按住左边的 ⠿ 拖动，可以在同一组里调整单词顺序。', 'Drag ⠿ on the left to reorder words within a group.')}${dysOn() ? ` <span class="dys-legend">${bi('灰色字母 = 不发音；点线字母 = 只让前面的元音变鼻音。', 'Grey letters are silent; dotted letters only nasalise the vowel before them.')}</span>` : ''}${custom ? ` <a href="#" id="vreset">${bi('恢复课本顺序', 'Restore book order')}</a>` : ''}</p>` +
         groups.map(g => `<div class="vgroup" data-g="${esc(g.g || '')}"><h3>${esc(g.g || '')}</h3>${g.items.map(v => `
-          <div class="vrow${gx(v.pos)} ${hide ? 'hidefr' : ''} ${mst.w[v.fr] ? 'mastered' : ''} ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}" data-say="${esc(forms(v.fr).say)}" data-fr="${esc(v.fr)}">
+          <div class="vrow${gx(v.pos)} ${hide ? 'hidefr' : ''} ${mst.w[v.fr] ? 'mastered' : ''} ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}" data-say="${esc(forms(v.fr).say)}"${v.ex && v.ex[0] ? ` data-ex="${esc(v.ex[0])}"` : ''} data-fr="${esc(v.fr)}">
             <span class="vdrag" title="${bi('拖动调整顺序', 'Drag to reorder')}" aria-label="${bi('拖动调整顺序', 'Drag to reorder')}">⠿</span>
             <span class="play">${ICON.play}</span>
             <span class="vfr" lang="fr">${artHint(v)}${frHTML(v.fr)}${window.DEEP && DEEP[v.fr] ? `<button class="deep-btn" data-deep="${esc(v.fr)}" lang="zh">${bi('详解', 'In depth')}</button>` : ''}</span>
@@ -2748,7 +2750,10 @@
         if (stopper) { stopper(); stopper = null; btn.innerHTML = ICON.play + ' 全部朗读'; return; }
         const rows = $$('.vrow', pane);
         btn.innerHTML = ICON.stop + ' 停止';
-        stopper = speakSeq(rows.map(r => r.dataset.say), i => {
+        const texts = [], rowOf = [], withEx = store.get('sauto', true);
+        rows.forEach((r, k) => { texts.push(r.dataset.say); rowOf.push(k); if (withEx && r.dataset.ex) { texts.push(r.dataset.ex); rowOf.push(k); } });
+        stopper = speakSeq(texts, n => {
+          const i = n < 0 ? -1 : rowOf[n];
           rows.forEach((r, k) => r.style.background = k === i ? 'var(--wash-blue)' : '');
           if (i >= 0) rows[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }, () => { stopper = null; btn.innerHTML = ICON.play + ' 全部朗读'; });
@@ -2821,7 +2826,7 @@
       ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-mqex" ${store.get('mqex', true) ? 'checked' : ''}> Show a small example sentence under each word</label>` : ''}
       ${cfg.kind === 'choose' ? `<label class="kbd tricky-opt"><input type="checkbox" id="t-tricky" ${store.get('tricky', true) ? 'checked' : ''}> Tricky choices: wrong answers are similar words (same type, same unit, similar spelling)</label>` : ''}
       <label class="kbd tricky-opt"><input type="checkbox" id="t-auto" ${store.get('vauto', false) ? 'checked' : ''}> Say each word out loud automatically</label>
-      <label class="kbd tricky-opt"><input type="checkbox" id="t-sauto" ${store.get('sauto', false) ? 'checked' : ''}> Also read the example sentence out loud</label>
+      <label class="kbd tricky-opt"><input type="checkbox" id="t-sauto" ${store.get('sauto', true) ? 'checked' : ''}> Also read the example sentence out loud</label>
       <div class="toolbar" style="justify-content:center">
         ${saved ? `<button class="btn" id="t-go">Resume</button><button class="btn ghost" id="t-new">Start over</button>` : `<button class="btn" id="t-go">Start</button>`}
         ${cfg.items.length > QUICK_N ? `<button class="btn ghost" id="t-quick">Quick round · ${QUICK_N} words</button>` : ''}
@@ -2883,7 +2888,7 @@
         record(v, good);
         if (good) return draw();   // right: straight to the next one
         $('#fb', box).innerHTML = `<div class="feedback ${r}"><span class="lab">${good ? 'Perfect' : r === 'accent' ? 'Nearly: mind the accents' : giveUp ? 'Answer' : 'Not quite, the answer is'}</span>
-          <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say)} ${r === 'accent' ? accentDiff(inp.value.trim(), v.fr) : frHTML(v.fr)}</div>
+          <div class="ans${gx(v.pos)}" lang="fr">${playBtn(forms(v.fr).say, '', v.ex && v.ex[0] || '')} ${r === 'accent' ? accentDiff(inp.value.trim(), v.fr) : frHTML(v.fr)}</div>
           ${after(v)}
           <div class="toolbar"><button class="btn small" id="t-next">${st.i >= total ? 'See the result' : 'Next ›'}</button></div></div>`;
         $('#t-next', box).onclick = draw; $('#t-next', box).focus({ preventScroll: true });
@@ -3001,17 +3006,17 @@
     }
 
     function drawChoose(v) {
-      const opts = options(v), right = meaningOf(v);
+      const opts = options(v), right = meaningOf(v), exShown = !!(store.get('mqex', true) && v.ex && v.ex[0]);
       let answered = false;
       box.innerHTML = `<div class="drill">${head()}
-        <div class="prompt choose-prompt${gx(v.pos)}"><div class="q-fr" lang="fr">${playBtn(forms(v.fr).say)} <b>${frHTML(v.fr)}</b></div>
+        <div class="prompt choose-prompt${gx(v.pos)}"><div class="q-fr" lang="fr">${playBtn(forms(v.fr).say, '', exShown ? v.ex[0] : '')} <b>${frHTML(v.fr)}</b></div>
           <div class="ppos"><span class="pos ${gender(v.pos) ? 'g-' + gender(v.pos) : ''}">${esc(v.pos)}</span></div>${exQ(v)}</div>
         <div class="opts">${opts.map((o, k) => `<button class="opt" data-k="${k}"><span class="opt-n">${k + 1}</span><span class="opt-t">${esc(o)}</span></button>`).join('')}</div>
         <div class="skip-row"><button class="btn ghost small" id="t-idk">I don't know · next</button></div>
         <div class="drill-actions">${leave}<span class="spacer"></span><span class="kbd"><kbd>1</kbd>–<kbd>4</kbd> choose · <kbd>Enter</kbd> next</span></div>
         <div id="fb"></div></div>`;
       bindPause();
-      if (auto) setTimeout(() => TTS.say(forms(v.fr).say), 200);
+      if (auto || (exShown && store.get('sauto', true))) setTimeout(() => { if (box.isConnected && !answered) sayEx(forms(v.fr).say, exShown ? v.ex[0] : ''); }, 200);
       const choose = k => {
         if (answered) return; answered = true;
         const good = opts[k] === right, it = note(v);
@@ -3462,7 +3467,7 @@
       const ins = $$('.cloze-in', body);
       ins[0].focus({ preventScroll: true });
       $('#c-read', body).onclick = () => TTS.say(full);
-      if (store.get('sauto', false)) setTimeout(() => { if (body.isConnected && !answered) TTS.say(full); }, 250);
+      if (store.get('sauto', true)) setTimeout(() => { if (body.isConnected && !answered) TTS.say(full); }, 250);
       const check = giveUp => {
         if (answered) return;
         if (!giveUp && ins.every(x => !x.value.trim())) return;
