@@ -2438,7 +2438,7 @@
       q.lang = 'en'; q.speakOnShow = true;
       q.head = `<div class="q-fr" lang="fr">${playBtn(q.say, '', ex ? ex[0] : '')} <b>${esc(e.fr)}</b></div>
         <div class="ppos"><span class="pos ${gender(info.pos) ? 'g-' + gender(info.pos) : ''}">${esc(info.pos || '')}</span></div>
-        ${ex ? `<div class="q-ex" lang="fr">${esc(ex[0])}</div>` : ''}`;
+        ${ex ? `<div class="q-ex" lang="fr">${playBtn(ex[0])} ${esc(ex[0])}</div>` : ''}`;
       return finish(meaning, pickDistractors(info, x => x.en || ''));
     }
     const gap = ex && (exact || gapSentence(ex[0], e.fr, true));
