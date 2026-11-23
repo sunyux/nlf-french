@@ -1781,17 +1781,30 @@
         || fr.find(v => /premium|enhanced|amélie|amelie|thomas|google/i.test(v.name))
         || fr[0] || this.voices[0] || null;
     },
-    say(text, onend) {
-      if (!this.ok) { onend && onend(); return; }
-      speechSynthesis.cancel();
+    utter(text) {
       const u = new SpeechSynthesisUtterance(text.replace(/^–\s*/, '').replace(/…/g, ', ').replace(/[¹²³*]/g, ''));
       u.lang = 'fr-FR'; if (this.voice) u.voice = this.voice;
       u.rate = settings.rate;
       u.volume = settings.volume;
+      return u;
+    },
+    say(text, onend) {
+      if (!this.ok) { onend && onend(); return; }
+      speechSynthesis.cancel();
+      const u = this.utter(text);
       let done = false;
       const fin = () => { if (!done) { done = true; onend && onend(); } };
       u.onend = fin; u.onerror = fin;
       speechSynthesis.speak(u);
+    },
+    // several lines one after another (queued together, so it does not depend on an "ended" event firing on the phone)
+    sayMany(texts, onend) {
+      texts = texts.filter(Boolean);
+      if (!this.ok || !texts.length) { onend && onend(); return; }
+      speechSynthesis.cancel();
+      let done = false;
+      const fin = () => { if (!done) { done = true; onend && onend(); } };
+      texts.forEach((t, k) => { const u = this.utter(t); if (k === texts.length - 1) { u.onend = fin; u.onerror = fin; } speechSynthesis.speak(u); });
     },
     stop() { if (this.ok) speechSynthesis.cancel(); },
   };
@@ -1824,7 +1837,7 @@
   }
   // auto-play: 'vauto' = words, 'sauto' = example sentences (read after the word, or on its own)
   const sayEx = (word, ex) => {
-    if (ex && store.get('sauto', true)) TTS.say(word || ex, () => { if (word) setTimeout(() => TTS.say(ex), 250); });
+    if (ex && store.get('sauto', true)) TTS.sayMany([word, ex]);
     else TTS.say(word || ex);
   };
   const playBtn = (text, extra = '', ex = '') => `<button class="play ${extra}" data-say="${esc(text)}"${ex ? ` data-ex="${esc(ex)}"` : ''} aria-label="朗读" title="朗读">${ICON.play}</button>`;
@@ -1891,7 +1904,7 @@
     $$('.play.on').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
     const ex = b.dataset.ex;
-    if (ex && store.get('sauto', true)) TTS.say(b.dataset.say, () => setTimeout(() => TTS.say(ex, () => b.classList.remove('on')), 250));   // the word first, then its example sentence
+    if (ex && store.get('sauto', true)) TTS.sayMany([b.dataset.say, ex], () => b.classList.remove('on'));   // the word first, then its example sentence
     else TTS.say(b.dataset.say, () => b.classList.remove('on'));
   });
 
