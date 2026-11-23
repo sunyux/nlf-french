@@ -1804,7 +1804,10 @@
       speechSynthesis.cancel();
       let done = false;
       const fin = () => { if (!done) { done = true; onend && onend(); } };
-      texts.forEach((t, k) => { const u = this.utter(t); if (k === texts.length - 1) { u.onend = fin; u.onerror = fin; } speechSynthesis.speak(u); });
+      // ONE utterance with a pause between the parts: phones sometimes drop a second queued utterance
+      const one = texts.map((t, k) => k < texts.length - 1 ? t.replace(/[\s.!?…:;,–-]+$/, '') : t).join('. ');
+      const u = this.utter(one); u.onend = fin; u.onerror = fin;
+      speechSynthesis.speak(u);
     },
     stop() { if (this.ok) speechSynthesis.cancel(); },
   };
@@ -1950,6 +1953,7 @@
       <label class="chk"><input type="checkbox" id="s-tw" ${settings.typewriter ? 'checked' : ''}> ${bi('打字机模式（打字声 + 打字机字体）', 'Typewriter mode (key sounds + typewriter font)')}</label>
       <label class="chk"><input type="checkbox" id="s-len" ${settings.lenient ? 'checked' : ''}> 重音写错也算对</label>
       <button class="btn ghost small" data-say="Bonjour ! Je m'appelle Alice. Ça va bien ?">试听</button>
+      <p class="kbd" style="margin:8px 0 0">${bi('版本', 'Version')} ${((([...document.scripts].find(x => /app\.js/.test(x.src)) || {}).src || '').match(/v=(\d+)/) || [])[1] || '?'}</p>
       <p class="kbd" style="margin:12px 0 0">macOS 可在 系统设置 › 辅助功能 › 朗读内容 › 系统声音 下载更自然的法语声音（如 Amélie 高音质）。</p>`;
     $('#s-rs').oninput = e => { settings.rs = +e.target.value; $('#rs-v').textContent = settings.rs + '%'; saveSettings(); applyReading(); };
     $('#s-cb').onchange = e => { settings.cb = e.target.checked; saveSettings(); applyReading(); };
